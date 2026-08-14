@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.3.1
+
+### Fixed
+
+- `default_surface_layouts()` (and therefore `infobim view`/any command that resolves the operational Surface with no `view.surfaceLayoutsPath` configured) crashed with `FileNotFoundError: ... default_surface_layouts.ttl` — the packaged asset the function reads via `importlib.resources` didn't exist. It was accidentally deleted by an unrelated commit (`7bde42397b6348e5d0a574be3f66887dda9e7504`, "use official linkset directory instead of forbidden relation folder for WorkStream resource linksets"), which never touched this file's own logic but removed it from the tree anyway. Restored verbatim from the commit that introduced it (`1c55ad0`); the package's own `test_default_surface_layouts_ships_an_always_matching_fallback` test — which already asserted on this exact file — was failing locally the whole time, confirming this wasn't a packaging-config gap but a genuine missing source file. Verified the restored `.ttl` is included in a built wheel via `importlib.resources`.
+
 ## Unreleased
 
 ## Unreleased — v0.3
