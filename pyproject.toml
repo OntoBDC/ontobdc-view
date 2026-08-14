@@ -7,7 +7,7 @@ name = "ontobdc-view"
 version = "0.3.0"
 description = "Browser presentation components and embeddable assets for OntoBDC views."
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 license = { text = "Apache-2.0" }
 authors = [
   { name = "Elias Magalhaes" }
