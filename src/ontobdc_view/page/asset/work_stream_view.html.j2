@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="{{ language }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{ page_title }}</title>
+<script>
+  // This Page is a separate document from the Surface it was opened from
+  // (onto-workstream-tile's "open" link), so the active theme doesn't carry
+  // over on its own — it's passed via ?theme= instead. Applied here, as an
+  // early classic (non-module, parser-blocking) script, so the correct
+  // theme is already active before first paint rather than flashing light
+  // then switching. Same token catalog onto-theme-tile itself builds with
+  // (ontobdc_view.component.adapter.component_source.theme_catalog), not a
+  // second hardcoded copy of the palette.
+  (() => {
+    const themes = {{ theme_catalog_json | safe }};
+    const requested = new URLSearchParams(location.search).get("theme");
+    const theme = themes.find((candidate) => candidate.name === requested) ?? themes[0];
+    if (!theme) return;
+    document.documentElement.dataset.theme = theme.name;
+    for (const [key, value] of Object.entries(theme.tokens ?? {})) {
+      document.documentElement.style.setProperty(`--onto-theme-${key}`, value);
+    }
+    document.addEventListener("DOMContentLoaded", () => {
+      const backLink = document.querySelector(".back-link");
+      if (backLink) backLink.href = `${backLink.getAttribute("href")}?theme=${encodeURIComponent(theme.name)}`;
+    });
+  })();
+</script>
+<style>
+{{ annotation_runtime_css }}
+{{ css_content }}
+</style>
+</head>
+<body>
+<script type="application/ld+json" id="ontobdc-page-jsonld">{{ entity_json }}</script>
+<script type="application/json" id="ontobdc-i18n">{{ i18n_json | safe }}</script>
+<main class="onto-page" data-ontobdc-resource="{{ entity_id }}">
+  <header class="onto-page-header">
+    <a class="icon-btn back-link" href="../../../index.html" data-i18n-title="backToSurface" data-i18n-aria-label="backToSurface">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+    </a>
+    <div class="breadcrumb">
+      <span class="breadcrumb-crumb" data-i18n="breadcrumbSurface"></span>
+      <span class="breadcrumb-sep">/</span>
+      <span class="breadcrumb-crumb is-current" data-i18n="breadcrumbWorkStream"></span>
+    </div>
+    <div class="header-actions">
+      <button type="button" class="connect-btn" data-i18n="connectFolder" data-i18n-title="connectFolderTitle" data-i18n-aria-label="connectFolder"></button>
+      <button type="button" class="icon-btn workspace-btn" disabled data-i18n-title="openAnnotationWorkspace" data-i18n-aria-label="openAnnotationWorkspace">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+      </button>
+      <button type="button" class="icon-btn subjects-btn" disabled data-i18n-title="openSubjectPage" data-i18n-aria-label="openSubjectPage">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/></svg>
+      </button>
+    </div>
+  </header>
+  <section class="tile onto-page-body">
+    <div class="body">
+      <div class="name"></div>
+      <div class="identifier"></div>
+    </div>
+    <div class="fields"></div>
+  </section>
+  <div class="dimension-cards"></div>
+</main>
+<script>
+{{ workstream_context_js }}
+</script>
+<script>
+{{ annotation_runtime_js }}
+</script>
+<script>
+{{ js_content }}
+</script>
+</body>
+</html>

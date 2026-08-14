@@ -1,0 +1,108 @@
+# Portuguese (Portugal)
+common:
+  open: "Abrir"
+  openFile: "Abrir ficheiro"
+  close: "Fechar"
+  closeTile: "Fechar mosaico"
+  noFile: "Nenhum ficheiro"
+  previewUnavailable: "Pré-visualização indisponível"
+  imageBadge: "IMAGEM"
+  fileBadge: "FICHEIRO"
+
+language_tile:
+  selectLanguage: "Selecionar idioma"
+
+theme_tile:
+  toggleTheme: "Alternar tema"
+  currentTheme: "Tema atual: {theme}. Alternar tema"
+  currentThemeShort: "Tema atual: {theme}"
+
+logo_tile:
+  ariaLabel: "Logótipo {brand}"
+
+file_tree_tile:
+  expandAll: "Expandir tudo"
+  collapseAll: "Recolher tudo"
+  openFullscreen: "Abrir em ecrã inteiro"
+  filesFallback: "Ficheiros"
+  noFiles: "Nenhum ficheiro"
+
+workstream_tile:
+  what: "O quê"
+  why: "Porquê"
+  who: "Quem"
+  where: "Onde"
+  when: "Quando"
+  how: "Como"
+  howMuch: "Quanto"
+  openView: "Abrir visualização da frente de trabalho"
+  expand: "Expandir"
+  collapse: "Recolher"
+  fallbackName: "Frente de trabalho"
+  noDetailsToShow: "Sem detalhes para mostrar"
+
+csv_file_tile:
+  rows: "{count} linhas"
+
+photo_tile:
+  fallbackCaption: "Fotografia"
+
+data_container_tile:
+  fallbackLabel: "Contentor"
+
+presentation_surface:
+  ariaLabel: "Superfície de apresentação"
+
+work_stream_view:
+  what: "O quê"
+  why: "Porquê"
+  who: "Quem"
+  where: "Onde"
+  when: "Quando"
+  how: "Como"
+  howMuch: "Quanto"
+  backToSurface: "Voltar à Superfície"
+  breadcrumbSurface: "Superfície"
+  breadcrumbWorkStream: "Frente de trabalho"
+  connectFolder: "Ligar pasta"
+  connectFolderTitle: "Ligue a pasta deste contentor para ativar anotações e relações de recursos"
+  openAnnotationWorkspace: "Abrir espaço de anotações"
+  openSubjectPage: "Abrir Página de Assunto"
+  description: "Descrição"
+  previewUnavailable: "Pré-visualização indisponível"
+  openFile: "Abrir ficheiro"
+  folderConnected: "Pasta ligada"
+  requestingAccess: "A pedir acesso…"
+  allowFolderAccess: "Permitir acesso à pasta"
+  connecting: "A ligar…"
+  connectionFailed: "Falha na ligação"
+  opening: "A abrir…"
+  all: "Todos"
+  showAllCategories: "Mostrar recursos de todas as categorias"
+  loadingCsv: "A carregar CSV…"
+  error: "Erro"
+  resourceCategories: "Categorias de recursos"
+  viewAnnotations: "Ver anotações"
+  createAnnotation: "Criar anotação"
+  related: "Relacionados"
+  suggested: "Sugeridos"
+  found: "Encontrados"
+  annotations: "Anotações"
+  unsuggest: "Remover sugestão"
+  suggest: "Sugerir"
+  unsuggesting: "A remover sugestão…"
+  suggesting: "A sugerir…"
+  connectFolderFirst: "Ligue uma pasta primeiro"
+  unrelate: "Desvincular"
+  relate: "Vincular"
+  unrelating: "A desvincular…"
+  relating: "A vincular…"
+  note: "Nota"
+  closeAnnotations: "Fechar"
+  noAnnotationsYet: "Ainda não há anotações neste recurso."
+  selectResourceToPreview: "Selecione um recurso para o pré-visualizar."
+  openResource: "Abrir {name}"
+  noPreviewAvailable: "Pré-visualização não disponível"
+  subjects: "Assuntos"
+  row: "{count} linha"
+  rows: "{count} linhas"

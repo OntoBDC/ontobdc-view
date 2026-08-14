@@ -1,0 +1,109 @@
+# English (base/default locale). Canonical key set — every other locale
+# file must carry the same keys under the same namespaces.
+common:
+  open: "Open"
+  openFile: "Open file"
+  close: "Close"
+  closeTile: "Close tile"
+  noFile: "No file"
+  previewUnavailable: "Preview unavailable"
+  imageBadge: "IMAGE"
+  fileBadge: "FILE"
+
+language_tile:
+  selectLanguage: "Select language"
+
+theme_tile:
+  toggleTheme: "Toggle theme"
+  currentTheme: "Current theme: {theme}. Toggle theme"
+  currentThemeShort: "Current theme: {theme}"
+
+logo_tile:
+  ariaLabel: "{brand} logo"
+
+file_tree_tile:
+  expandAll: "Expand all"
+  collapseAll: "Collapse all"
+  openFullscreen: "Open fullscreen"
+  filesFallback: "Files"
+  noFiles: "No files"
+
+workstream_tile:
+  what: "What"
+  why: "Why"
+  who: "Who"
+  where: "Where"
+  when: "When"
+  how: "How"
+  howMuch: "How Much"
+  openView: "Open workstream view"
+  expand: "Expand"
+  collapse: "Collapse"
+  fallbackName: "WorkStream"
+  noDetailsToShow: "No details to show"
+
+csv_file_tile:
+  rows: "{count} rows"
+
+photo_tile:
+  fallbackCaption: "Photo"
+
+data_container_tile:
+  fallbackLabel: "Container"
+
+presentation_surface:
+  ariaLabel: "Presentation Surface"
+
+work_stream_view:
+  what: "What"
+  why: "Why"
+  who: "Who"
+  where: "Where"
+  when: "When"
+  how: "How"
+  howMuch: "How Much"
+  backToSurface: "Back to Surface"
+  breadcrumbSurface: "Surface"
+  breadcrumbWorkStream: "WorkStream"
+  connectFolder: "Connect folder"
+  connectFolderTitle: "Connect this container's folder to enable annotations and resource relations"
+  openAnnotationWorkspace: "Open annotation workspace"
+  openSubjectPage: "Open Subject Page"
+  description: "Description"
+  previewUnavailable: "Preview unavailable"
+  openFile: "Open file"
+  folderConnected: "Folder connected"
+  requestingAccess: "Requesting access…"
+  allowFolderAccess: "Allow folder access"
+  connecting: "Connecting…"
+  connectionFailed: "Connection failed"
+  opening: "Opening…"
+  all: "All"
+  showAllCategories: "Show resources from every category"
+  loadingCsv: "Loading CSV…"
+  error: "Error"
+  resourceCategories: "Resource categories"
+  viewAnnotations: "View annotations"
+  createAnnotation: "Create annotation"
+  related: "Related"
+  suggested: "Suggested"
+  found: "Found"
+  annotations: "Annotations"
+  unsuggest: "Unsuggest"
+  suggest: "Suggest"
+  unsuggesting: "Unsuggesting…"
+  suggesting: "Suggesting…"
+  connectFolderFirst: "Connect a folder first"
+  unrelate: "Unrelate"
+  relate: "Relate"
+  unrelating: "Unrelating…"
+  relating: "Relating…"
+  note: "Note"
+  closeAnnotations: "Close"
+  noAnnotationsYet: "No annotations on this resource yet."
+  selectResourceToPreview: "Select a resource to preview it."
+  openResource: "Open {name}"
+  noPreviewAvailable: "No preview available"
+  subjects: "Subjects"
+  row: "{count} row"
+  rows: "{count} rows"
