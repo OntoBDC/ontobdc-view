@@ -1,6 +1,6 @@
 """i18n locale catalog tests — pure Python, no `ontobdc` dependency.
 
-Covers the YAML -> in-memory catalog pipeline (`ontobdc_view.i18n`), not the
+Covers the YAML -> in-memory catalog pipeline (`ontobdc_view.component.adapter.i18n`), not the
 `__ONTOBDC_BUILD_I18N__` placeholder substitution in `component_source.py`
 (that module imports `ontobdc`, which isn't a dependency of this package).
 """
@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from ontobdc_view.i18n import (
+from ontobdc_view.component.adapter.i18n import (
     DEFAULT_LOCALE,
     LANGUAGE_CATALOG,
     SUPPORTED_LOCALES,

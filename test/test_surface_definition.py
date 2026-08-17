@@ -1,9 +1,11 @@
 import pytest
 from rdflib import Graph, URIRef
 
-from ontobdc_view.component.adapter.surface_definition import (
+from ontobdc.shared.domain.model.surface import (
     SurfaceDefinitionError,
-    parse_surface_definition,
+)
+from ontobdc_view.component.adapter.surface.rdf import (
+    SurfaceRdfParser,
 )
 
 PREFIXES = """
@@ -81,13 +83,13 @@ screen:loginPlacement
 
 
 def test_parses_operation_content_pinned_regions():
-    definition = parse_surface_definition(_graph(BASE_SURFACE), SURFACE_IRI)
+    definition = SurfaceRdfParser.parse_surface_definition(_graph(BASE_SURFACE), SURFACE_IRI)
     roles = {region.role for region in definition.regions}
     assert roles == {"OperationRegion", "ContentRegion", "PinnedRegion"}
 
 
 def test_parses_logical_row_column_geometry():
-    definition = parse_surface_definition(_graph(BASE_SURFACE), SURFACE_IRI)
+    definition = SurfaceRdfParser.parse_surface_definition(_graph(BASE_SURFACE), SURFACE_IRI)
     assert definition.columns == 12
     assert definition.rows == 12
 
@@ -99,7 +101,7 @@ def test_parses_logical_row_column_geometry():
 
 
 def test_parses_scrollable_true_and_false():
-    definition = parse_surface_definition(_graph(BASE_SURFACE), SURFACE_IRI)
+    definition = SurfaceRdfParser.parse_surface_definition(_graph(BASE_SURFACE), SURFACE_IRI)
     by_role = {region.role: region.scrollable for region in definition.regions}
     assert by_role == {
         "OperationRegion": False,
@@ -109,7 +111,7 @@ def test_parses_scrollable_true_and_false():
 
 
 def test_parses_start_and_end_aligned_placements():
-    definition = parse_surface_definition(_graph(BASE_SURFACE), SURFACE_IRI)
+    definition = SurfaceRdfParser.parse_surface_definition(_graph(BASE_SURFACE), SURFACE_IRI)
     operation = next(region for region in definition.regions if region.role == "OperationRegion")
     by_component = {placement.component_iri: placement.alignment for placement in operation.placements}
     assert by_component["urn:ontobdc:screen:logo"] == "start"
@@ -118,7 +120,7 @@ def test_parses_start_and_end_aligned_placements():
 
 
 def test_orders_theme_before_login_within_end_group():
-    definition = parse_surface_definition(_graph(BASE_SURFACE), SURFACE_IRI)
+    definition = SurfaceRdfParser.parse_surface_definition(_graph(BASE_SURFACE), SURFACE_IRI)
     operation = next(region for region in definition.regions if region.role == "OperationRegion")
     end_group = [p.component_iri for p in operation.placements if p.alignment == "end"]
     assert end_group == ["urn:ontobdc:screen:theme", "urn:ontobdc:screen:login"]
@@ -139,7 +141,7 @@ screen:badPlacement
     view:placementOrder 1 .
 """
     with pytest.raises(SurfaceDefinitionError):
-        parse_surface_definition(_graph(turtle), SURFACE_IRI)
+        SurfaceRdfParser.parse_surface_definition(_graph(turtle), SURFACE_IRI)
 
 
 def test_rejects_non_positive_geometry():
@@ -153,7 +155,7 @@ screen:operation
     a view:OperationRegion .
 """
     with pytest.raises(SurfaceDefinitionError):
-        parse_surface_definition(_graph(turtle), SURFACE_IRI)
+        SurfaceRdfParser.parse_surface_definition(_graph(turtle), SURFACE_IRI)
 
 
 def test_rejects_negative_placement_order():
@@ -174,11 +176,11 @@ screen:placement
     view:placementOrder -1 .
 """
     with pytest.raises(SurfaceDefinitionError):
-        parse_surface_definition(_graph(turtle), SURFACE_IRI)
+        SurfaceRdfParser.parse_surface_definition(_graph(turtle), SURFACE_IRI)
 
 
 def test_pinned_region_model_carries_no_fixed_or_sticky_semantic():
-    definition = parse_surface_definition(_graph(BASE_SURFACE), SURFACE_IRI)
+    definition = SurfaceRdfParser.parse_surface_definition(_graph(BASE_SURFACE), SURFACE_IRI)
     pinned = next(region for region in definition.regions if region.role == "PinnedRegion")
 
     dumped = pinned.model_dump()
@@ -207,7 +209,7 @@ screen:pinnedA a view:PinnedRegion .
 screen:pinnedB a view:PinnedRegion .
 """
     with pytest.raises(SurfaceDefinitionError):
-        parse_surface_definition(_graph(turtle), SURFACE_IRI)
+        SurfaceRdfParser.parse_surface_definition(_graph(turtle), SURFACE_IRI)
 
 
 def test_rejects_region_without_recognized_type():
@@ -219,7 +221,7 @@ screen:main
 screen:mystery a view:Component .
 """
     with pytest.raises(SurfaceDefinitionError):
-        parse_surface_definition(_graph(turtle), SURFACE_IRI)
+        SurfaceRdfParser.parse_surface_definition(_graph(turtle), SURFACE_IRI)
 
 
 def test_generic_presentation_region_is_accepted():

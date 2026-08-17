@@ -2,7 +2,10 @@ from rdflib.namespace import DCTERMS
 
 from ontobdc.shared.domain.model.component import ComponentMetadata
 from ontobdc.shared.domain.port.component import ComponentPort
-from ontobdc.storage.adapter.bootstrap import OBDC
+from ontobdc.storage.adapter.bootstrap import StorageNamespaceBootstrap
+
+StorageNamespaceBootstrap.initialize()
+_OBDC = StorageNamespaceBootstrap.OBDC
 
 
 class DataContainerTileComponent(ComponentPort):
@@ -23,7 +26,7 @@ class DataContainerTileComponent(ComponentPort):
         name="Data Container Tile",
         description="Summarizes a DataContainer entity (title, description, location).",
         author=["http://kb.elias.eng.br/nid/elias.ttl#Elias"],
-        required_uris=[str(OBDC.DataContainer)],
+        required_uris=[str(_OBDC.DataContainer)],
         tags=["view", "surface", "tile", "container"],
         supported_languages=["en", "pt-BR", "pt-PT", "es"],
         min_columns=1,

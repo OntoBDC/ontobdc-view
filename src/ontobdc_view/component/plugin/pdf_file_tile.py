@@ -1,6 +1,9 @@
 from ontobdc.shared.domain.model.component import ComponentMetadata
 from ontobdc.shared.domain.port.component import ComponentPort
-from ontobdc.storage.adapter.bootstrap import OBDC
+from ontobdc.storage.adapter.bootstrap import StorageNamespaceBootstrap
+
+StorageNamespaceBootstrap.initialize()
+_OBDC = StorageNamespaceBootstrap.OBDC
 
 
 class PdfFileTileComponent(ComponentPort):
@@ -13,7 +16,7 @@ class PdfFileTileComponent(ComponentPort):
         name="PDF File Tile",
         description="Previews a PDF file owned by the container.",
         author=["http://kb.elias.eng.br/nid/elias.ttl#Elias"],
-        required_uris=[str(OBDC.PdfFile)],
+        required_uris=[str(_OBDC.PdfFile)],
         tags=["view", "surface", "tile", "files", "pdf"],
         supported_languages=["en", "pt-BR", "pt-PT", "es"],
         min_columns=6,

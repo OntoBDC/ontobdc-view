@@ -7,7 +7,7 @@ from urllib.parse import quote
 
 from ontobdc.shared.domain.port.component_source import ComponentSourcePort
 
-from ...i18n import LANGUAGE_CATALOG, catalog_for_namespace
+from .i18n import LANGUAGE_CATALOG, catalog_for_namespace
 
 _BUILD_PLACEHOLDER = "__ONTOBDC_BUILD_"
 
@@ -127,7 +127,7 @@ class ComponentSourceAdapter(ComponentSourcePort):
     path, since nothing in the active pipeline ever supplied anything other
     than these defaults. Any Tile whose JS carries `__ONTOBDC_BUILD_I18N__`
     also gets that placeholder resolved to its translated-string catalog
-    (see `ontobdc_view.i18n`), keyed by the Tile's own tag.
+    (see `ontobdc_view.component.adapter.i18n`), keyed by the Tile's own tag.
     """
 
     def component_source(self, tag: str) -> Optional[str]:

@@ -1,13 +1,14 @@
 import pytest
 from rdflib import Graph, URIRef
 
-from ontobdc_view.component.adapter.surface_definition import (
+from ontobdc.shared.domain.model.surface import (
     SurfaceDefinitionError,
-    parse_surface_definition,
 )
-from ontobdc_view.component.adapter.surface_resolution import (
-    resolve_placement_tag,
-    to_render_payload,
+from ontobdc_view.component.adapter.surface.rdf import (
+    SurfaceRdfParser,
+)
+from ontobdc_view.component.adapter.surface.render import (
+    SurfaceResolutionService,
 )
 
 VIEW = "http://datacenter.app.br/ontology/ontobdc/domain/view.ttl#"
@@ -58,21 +59,21 @@ screen:themePlacement
 def _definition():
     graph = Graph()
     graph.parse(data=SURFACE_TURTLE, format="turtle")
-    return parse_surface_definition(graph, URIRef("urn:ontobdc:screen:main"))
+    return SurfaceRdfParser.parse_surface_definition(graph, URIRef("urn:ontobdc:screen:main"))
 
 
 def test_resolve_placement_tag_finds_registered_component():
-    assert resolve_placement_tag(f"{VIEW}LogoTile") == "onto-logo-tile"
-    assert resolve_placement_tag(f"{VIEW}ThemeTile") == "onto-theme-tile"
+    assert SurfaceResolutionService.resolve_placement_tag(f"{VIEW}LogoTile") == "onto-logo-tile"
+    assert SurfaceResolutionService.resolve_placement_tag(f"{VIEW}ThemeTile") == "onto-theme-tile"
 
 
 def test_resolve_placement_tag_rejects_unknown_type():
     with pytest.raises(SurfaceDefinitionError):
-        resolve_placement_tag(f"{VIEW}NoSuchTile")
+        SurfaceResolutionService.resolve_placement_tag(f"{VIEW}NoSuchTile")
 
 
 def test_to_render_payload_resolves_tags_and_preserves_shape():
-    payload = to_render_payload(_definition())
+    payload = SurfaceResolutionService.to_render_payload(_definition())
 
     assert payload["columns"] == 12
     assert payload["rows"] == 12

@@ -226,7 +226,7 @@ def render_entity_view(
     )
 
     from .component.adapter.component_source import theme_catalog
-    from .i18n import catalog_for_namespace
+    from .component.adapter.i18n import catalog_for_namespace
 
     theme_catalog_json = _escape_for_script_embedding(
         json.dumps(theme_catalog(), ensure_ascii=False)

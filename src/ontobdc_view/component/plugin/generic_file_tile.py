@@ -1,6 +1,9 @@
 from ontobdc.shared.domain.model.component import ComponentMetadata
 from ontobdc.shared.domain.port.component import ComponentPort
-from ontobdc.storage.adapter.bootstrap import OBDC
+from ontobdc.storage.adapter.bootstrap import StorageNamespaceBootstrap
+
+StorageNamespaceBootstrap.initialize()
+_OBDC = StorageNamespaceBootstrap.OBDC
 
 
 class GenericFileTileComponent(ComponentPort):
@@ -19,7 +22,7 @@ class GenericFileTileComponent(ComponentPort):
         name="Generic File Tile",
         description="Shows metadata for a file with no dedicated preview Tile.",
         author=["http://kb.elias.eng.br/nid/elias.ttl#Elias"],
-        required_uris=[str(OBDC.GenericFile)],
+        required_uris=[str(_OBDC.GenericFile)],
         tags=["view", "surface", "tile", "files", "metadata"],
         supported_languages=["en", "pt-BR", "pt-PT", "es"],
         min_columns=6,
