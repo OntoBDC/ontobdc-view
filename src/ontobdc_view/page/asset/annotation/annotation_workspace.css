@@ -1,0 +1,7 @@
+.ontobdc-annotation-workspace{display:grid;gap:1rem;color:var(--ontobdc-annotation-text,#e5eefc)}
+.ontobdc-annotation-workspace{grid-template-columns:minmax(18rem,1fr) minmax(22rem,2fr)}
+.ontobdc-annotation-workspace-summary{grid-column:1/-1;padding:1rem;border:1px solid var(--ontobdc-annotation-line,rgba(148,163,184,.25));border-radius:1rem}
+.ontobdc-annotation-workspace-list,.ontobdc-annotation-workspace-detail{display:grid;align-content:start;gap:.6rem;padding:1rem;border:1px solid var(--ontobdc-annotation-line,rgba(148,163,184,.25));border-radius:1rem}
+.ontobdc-annotation-workspace-item{padding:.7rem 1rem;text-align:left;color:inherit;background:transparent;border:1px solid transparent;border-radius:.75rem}
+.ontobdc-annotation-workspace-item[aria-pressed=true]{border-color:var(--ontobdc-annotation-accent,#67e8f9)}
+@media(max-width:800px){.ontobdc-annotation-workspace{grid-template-columns:1fr}}

@@ -50,6 +50,9 @@ photo_tile:
 data_container_tile:
   fallbackLabel: "Contêiner"
 
+file_size_tile:
+  title: "STORAGE"
+
 presentation_surface:
   ariaLabel: "Superfície de apresentação"
 
@@ -72,8 +75,16 @@ work_stream_view:
   previewUnavailable: "Pré-visualização indisponível"
   openFile: "Abrir arquivo"
   folderConnected: "Pasta conectada"
+  connectedFolder: "Conectado"
+  reconnectFolder: "Reconectar pasta"
   requestingAccess: "Solicitando acesso…"
   allowFolderAccess: "Permitir acesso à pasta"
+  browserFileSystemAccessUnavailable: "Este navegador não oferece a File System Access API. Use Microsoft Edge ou Google Chrome."
+  noWorkStreamContext: "Nenhum contexto de WorkStream está disponível nesta página."
+  multipleDatasetsSelectedFolder: "Esta pasta contém mais de um projeto. Escolha diretamente a pasta do projeto."
+  noDatasetSelectedFolder: "A pasta selecionada não contém um projeto."
+  datapackageJsonNotFound: "O projeto selecionado não possui um datapackage.json acessível."
+  connectionIdle: "Não conectado"
   connecting: "Conectando…"
   connectionFailed: "Falha na conexão"
   opening: "Abrindo…"
@@ -106,6 +117,9 @@ work_stream_view:
   subjects: "Assuntos"
   row: "{count} linha"
   rows: "{count} linhas"
+  refreshFromWorkbook: "Atualizar"
+  refreshFromWorkbookTitle: "Recarregar valores 5W2H diretamente do workbook da frente de trabalho"
+  refreshingFromWorkbook: "Atualizando workbook…"
 
 annotation:
   annotation: "Anotação"

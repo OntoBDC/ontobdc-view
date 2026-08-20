@@ -1,0 +1,13 @@
+.workstream-schedule-timeline {
+  grid-template-rows: 26px !important;
+  min-height: 112px !important;
+}
+
+.workstream-schedule-timeline .general-schedule-task-bar {
+  display: none;
+}
+
+.workstream-schedule-timeline .general-schedule-task-bar:first-child {
+  display: block;
+  grid-row: 1 !important;
+}

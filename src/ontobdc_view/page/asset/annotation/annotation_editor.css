@@ -1,0 +1,100 @@
+.ontobdc-annotation-form,
+.ontobdc-annotation-editor {
+  display: grid;
+  gap: 14px;
+}
+
+.ontobdc-annotation-category-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+}
+
+.ontobdc-annotation-field {
+  display: grid;
+  gap: 7px;
+  color: var(--ontobdc-annotation-text, #e5eefc);
+  font-size: .86rem;
+  font-weight: 700;
+}
+
+.ontobdc-annotation-field input,
+.ontobdc-annotation-field select,
+.ontobdc-annotation-field textarea {
+  width: 100%;
+  padding: 10px 12px;
+  color: inherit;
+  border: 1px solid var(--ontobdc-annotation-line, rgba(148, 163, 184, .28));
+  border-radius: 12px;
+  background: var(--ontobdc-annotation-input, rgba(15, 23, 42, .78));
+}
+
+.ontobdc-annotation-field textarea { min-height: 112px; resize: vertical; }
+.ontobdc-annotation-field [aria-invalid="true"] { border-color: #fb7185; }
+.ontobdc-annotation-field-error,
+.ontobdc-annotation-form-error { color: #fda4af; font-size: .78rem; }
+
+.ontobdc-annotation-geometry-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  padding: 6px;
+  border: 1px solid var(--ontobdc-annotation-line, rgba(148, 163, 184, .22));
+  border-radius: 14px;
+}
+
+.ontobdc-annotation-geometry-toolbar button[aria-pressed="true"] {
+  color: var(--ontobdc-annotation-accent, #67e8f9);
+  border-color: currentColor;
+  background: rgba(103, 232, 249, .1);
+}
+
+/* The overlay itself must stay click-through — it sits on top of
+   .ontobdc-annotation-overlay (the existing-annotation markers) and,
+   set to "auto" across its whole (usually empty/transparent) box, was
+   swallowing every click meant for a marker underneath before it
+   could ever reach one. Only the actual drawn point/box/handle
+   shapes should be clickable. */
+.ontobdc-annotation-geometry-overlay { pointer-events: none; }
+.ontobdc-annotation-geometry-point,.ontobdc-annotation-geometry-box,.ontobdc-annotation-geometry-handle { pointer-events: auto; }
+.ontobdc-annotation-geometry-point,.ontobdc-annotation-geometry-box { cursor: move; }
+.ontobdc-annotation-geometry-handle { fill: #fff; stroke: var(--ontobdc-annotation-accent,#67e8f9); stroke-width: 3px; cursor: nwse-resize; }
+/* A neutral, translucent handle overlaid on the annotation's own
+   marker — not a second, competing colored shape (which is what a
+   solid accent-colored fill here looked like: a distinct disc rather
+   than "this marker is the one you're editing"). */
+.ontobdc-annotation-geometry-point {
+  fill: rgba(226, 232, 240, .28);
+  stroke: rgba(226, 232, 240, .92);
+  stroke-width: 2px;
+}
+.ontobdc-annotation-geometry-box {
+  fill: rgba(103, 232, 249, .08);
+  stroke: var(--ontobdc-annotation-accent, #67e8f9);
+  stroke-width: 3px;
+  stroke-dasharray: 10 7;
+}
+
+.ontobdc-annotation-toast {
+  position: absolute;
+  top: 18px;
+  left: 50%;
+  transform: translate(-50%, -14px);
+  padding: 11px 22px;
+  border-radius: 999px;
+  background: #22c55e;
+  color: #052e16;
+  font-weight: 800;
+  font-size: 14px;
+  letter-spacing: .01em;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .4);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .2s ease, transform .2s ease;
+  z-index: 20;
+}
+.ontobdc-annotation-toast.is-visible {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}

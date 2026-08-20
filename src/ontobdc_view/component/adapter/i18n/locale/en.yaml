@@ -51,6 +51,9 @@ photo_tile:
 data_container_tile:
   fallbackLabel: "Container"
 
+file_size_tile:
+  title: "STORAGE"
+
 presentation_surface:
   ariaLabel: "Presentation Surface"
 
@@ -73,8 +76,16 @@ work_stream_view:
   previewUnavailable: "Preview unavailable"
   openFile: "Open file"
   folderConnected: "Folder connected"
+  connectedFolder: "Connected"
+  reconnectFolder: "Reconnect folder"
   requestingAccess: "Requesting access…"
   allowFolderAccess: "Allow folder access"
+  browserFileSystemAccessUnavailable: "This browser doesn't offer the File System Access API. Use Microsoft Edge or Google Chrome."
+  noWorkStreamContext: "No WorkStream context is available on this page."
+  multipleDatasetsSelectedFolder: "This folder contains more than one project. Choose the project folder directly."
+  noDatasetSelectedFolder: "The selected folder doesn't contain a project."
+  datapackageJsonNotFound: "The selected project doesn't have an accessible datapackage.json."
+  connectionIdle: "Not connected"
   connecting: "Connecting…"
   connectionFailed: "Connection failed"
   opening: "Opening…"
@@ -107,6 +118,9 @@ work_stream_view:
   subjects: "Subjects"
   row: "{count} row"
   rows: "{count} rows"
+  refreshFromWorkbook: "Refresh"
+  refreshFromWorkbookTitle: "Reload 5W2H values directly from the WorkStream workbook"
+  refreshingFromWorkbook: "Refreshing workbook…"
 
 annotation:
   annotation: "Annotation"

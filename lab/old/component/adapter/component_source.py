@@ -110,10 +110,14 @@ _I18N_NAMESPACE_BY_TAG = {
     "onto-csv-file-tile": "csv_file_tile",
     "onto-photo-tile": "photo_tile",
     "onto-data-container-tile": "data_container_tile",
+    "onto-file-size-tile": "file_size_tile",
     "onto-presentation-surface": "presentation_surface",
     "onto-pdf-file-tile": "common",
     "onto-generic-file-tile": "common",
     "onto-image-file-tile": "common",
+    # file_tree_tile also carries openFullscreen, which this Tile reuses;
+    # merge_common_namespace=True still pulls in every "common" key too.
+    "onto-file-viewer-tile": "file_tree_tile",
 }
 
 

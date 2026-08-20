@@ -11,6 +11,15 @@
     `${OBDC_NS}CsvFile`,
   ]);
 
+  const WORKSTREAM_PAYLOAD = window.infoBimWorkStreamView || null;
+
+  // Live (pyodide-mounted) 5W2H values override the static JSON-LD ones
+  // when the user connects the container folder (or clicks refresh).
+  // Stored separately from selfNode so the original graph stays untouched
+  // (dimension cards' URI construction still relies on selfNode["@id"] etc.)
+  let liveWorkbookRecord = null;
+  let liveRelationships = null;
+
   const I18N = JSON.parse(document.getElementById("ontobdc-i18n")?.textContent || "{}");
 
   function t(key, vars) {
@@ -56,8 +65,16 @@
   let graphNodes = [];
   let selfNode = null;
   let workStreamContext = null;
-  let containerHandle = null;
+  let rawContainerHandle = null;
+  let datasetHandle = null;
   let annotationRuntime = null;
+  // tryReconnectSilently() (fired from render(), unattended) and
+  // connectFolder() (fired from a user click) can both end up mid-flight on
+  // the exact same stored handle's permission APIs at once -- a fast click
+  // right as the page finishes loading races render()'s own silent
+  // reconnect attempt. Serializing them through this promise avoids two
+  // concurrent queryPermission()/requestPermission() calls on one handle.
+  let pendingReconnectAttempt = null;
   // Each card registers a reload() (re-check relations) and a
   // setConnected()/setDisconnected() callback here, invoked from the
   // shared folder-connection flow below.
@@ -74,7 +91,42 @@
     }
   }
 
+  // Maps canonical column names (workbook headers / ICDD linkset left-hand
+  // side identifiers) onto the property URIs used on this page, so a live
+  // workbook record can override a given JSON-LD property. Keys are the
+  // exact string names produced by the openpyxl parse script below (header
+  // row of the WorkStream worksheet, lowercased on lookup); values are the
+  // predicate URIs `literal()` normally reads from selfNode.
+  const WORKBOOK_COLUMN_TO_PROPERTY = Object.freeze({
+    Name: DCTERMS_TITLE,
+    Description: DCTERMS_DESCRIPTION,
+    What: `${WORK_STREAM_TYPE_NS}what`,
+    Why: `${WORK_STREAM_TYPE_NS}why`,
+    Who: `${WORK_STREAM_TYPE_NS}who`,
+    Where: `${WORK_STREAM_TYPE_NS}where`,
+    When: `${WORK_STREAM_TYPE_NS}when`,
+    How: `${WORK_STREAM_TYPE_NS}how`,
+    HowMuch: `${WORK_STREAM_TYPE_NS}howMuch`,
+    "How much": `${WORK_STREAM_TYPE_NS}howMuch`,
+  });
+
+  function _workbookValueForProperty(propertyUri) {
+    if (!liveWorkbookRecord || !propertyUri) return null;
+    for (const [column, uri] of Object.entries(WORKBOOK_COLUMN_TO_PROPERTY)) {
+      if (uri !== propertyUri) continue;
+      const raw = liveWorkbookRecord[column] ?? liveWorkbookRecord[column.toLowerCase()];
+      if (raw === null || raw === undefined) continue;
+      const text = String(raw).trim();
+      if (text !== "") return text;
+    }
+    return null;
+  }
+
   function literal(node, property, lang) {
+    const live = (node === selfNode || (node && node["@id"] === selfNode?.["@id"]))
+      ? _workbookValueForProperty(property)
+      : null;
+    if (live !== null) return live;
     const values = node?.[property];
     if (!Array.isArray(values) || values.length === 0) return "";
     const localized = lang ? values.find((value) => value["@language"] === lang) : null;
@@ -258,6 +310,44 @@
   const HANDLE_DB_NAME = "ontobdc-workstream-view";
   const HANDLE_STORE_NAME = "handles";
   const HANDLE_KEY = "containerHandle";
+  const HANDLE_PICKER_ID = "infobim-project-container";
+
+  async function isContainerHandle(handle) {
+    try {
+      const metadataDirectory = await handle.getDirectoryHandle(".__ontobdc__");
+      await metadataDirectory.getFileHandle("datapackage.json");
+      return true;
+    } catch (error) {
+      if (error && error.name === "NotFoundError") {
+        return false;
+      }
+      throw error;
+    }
+  }
+
+  async function resolveContainerHandle(selectedHandle) {
+    if (await isContainerHandle(selectedHandle)) {
+      return selectedHandle;
+    }
+
+    const matches = [];
+    for await (const entry of selectedHandle.values()) {
+      if (entry.kind === "directory" && await isContainerHandle(entry)) {
+        matches.push(entry);
+      }
+    }
+
+    if (matches.length === 1) {
+      return matches[0];
+    }
+    if (matches.length > 1) {
+      throw new Error(
+        t("multipleDatasetsSelectedFolder"),
+      );
+    }
+
+    throw new Error(t("noDatasetSelectedFolder"));
+  }
 
   function openHandleDb() {
     return new Promise((resolve, reject) => {
@@ -297,13 +387,176 @@
     }
   }
 
-  function setConnected(handle) {
-    containerHandle = handle;
-    document.querySelector(".connect-btn").textContent = t("folderConnected");
-    document.querySelector(".connect-btn").disabled = true;
+  async function deleteStoredHandle() {
+    try {
+      const db = await openHandleDb();
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction(HANDLE_STORE_NAME, "readwrite");
+        tx.objectStore(HANDLE_STORE_NAME).delete(HANDLE_KEY);
+        tx.oncomplete = resolve;
+        tx.onerror = () => reject(tx.error);
+      });
+      db.close();
+    } catch (error) {
+      console.warn("Failed to delete stored folder handle:", error);
+    }
+  }
+
+  async function requestWritableHandle(handle) {
+    const permissionOptions = { mode: "readwrite" };
+    const currentPermission = await handle.queryPermission(permissionOptions);
+    return (
+      currentPermission === "granted"
+      || await handle.requestPermission(permissionOptions) === "granted"
+    );
+  }
+
+  // Exact 1:1 copy of techcenter-doc/workstream_5w2h.js acquireContainerHandle
+  // (lines 182-204 in the reference).
+  //
+  // Tries the stored handle first: if it still works (permission re-granted
+  // via the lightweight "Allow folder access?" prompt and
+  // resolveContainerHandle still matches a dataset), return the resolved
+  // handle silently, NO directory picker navigation needed. Otherwise it
+  // deletes the stale stored handle and falls through to the native
+  // showDirectoryPicker() dialog, pre-wired to the "documents" startIn
+  // bucket and with a persistent picker-id so the OS remembers this
+  // container's last picked location on every subsequent visit.
+  async function acquireContainerHandle() {
+    let handle = await loadStoredHandle();
+    if (handle) {
+      if (await requestWritableHandle(handle)) {
+        try {
+          return await resolveContainerHandle(handle);
+        } catch (error) {
+          await deleteStoredHandle();
+        }
+      } else {
+        await deleteStoredHandle();
+      }
+    }
+
+    handle = await window.showDirectoryPicker({
+      id: HANDLE_PICKER_ID,
+      mode: "readwrite",
+      startIn: "documents",
+    });
+    const containerHandle = await resolveContainerHandle(handle);
+    await storeHandle(handle);
+    return containerHandle;
+  }
+
+  // 1:1 copy of techcenter-doc/workstream_5w2h.js openContainer()
+  // (lines 1713-2043 reference). Atomic single-function flow — no splitting
+  // across four half-functions. Every intermediate failure lands in the same
+  // catch/finally so the button never ends up disabled with fake state.
+  async function openContainer() {
+    const button = document.querySelector(".connect-btn");
+    const refreshBtn = document.querySelector(".refresh-btn");
+    button.disabled = true;
+    button.textContent = t("requestingAccess");
+
+    try {
+      if (typeof window.showDirectoryPicker !== "function") {
+        throw new Error(
+          t("browserFileSystemAccessUnavailable")
+        );
+      }
+      if (!WORKSTREAM_PAYLOAD) {
+        throw new Error(t("noWorkStreamContext"));
+      }
+
+      // Step 1 — Handle acquisition + resolution.
+      // acquireContainerHandle already:
+      //   * tries the stored handle (lightweight permission prompt)
+      //   * falls back to showDirectoryPicker with picker-id
+      //   * resolves the selected handle before returning
+      const resolvedDatasetHandle = await acquireContainerHandle();
+      rawContainerHandle = resolvedDatasetHandle;
+      datasetHandle = resolvedDatasetHandle;
+
+      // Step 2 — Pyodide + mount + parse. Uses our ensurePyodide wrapper so
+      // we don't re-download rdflib/openpyxl on every click.
+      const pyodide = await ensurePyodide({ withOpenpyxl: true });
+      if (activeMountPath) {
+        try {
+          pyodide.FS.unmount(activeMountPath);
+        } catch {
+        }
+        activeMountPath = null;
+      }
+      const mountPath = `/container_${Date.now()}`;
+      pyodide.FS.mkdirTree(mountPath);
+      await pyodide.mountNativeFS(mountPath, resolvedDatasetHandle);
+      activeMountPath = mountPath;
+      try {
+        pyodide.registerJsModule("ontobdc_trace", {
+          log: (msg) => {
+            console.log("[ontobdc-pyodide]", String(msg));
+          },
+        });
+      } catch {
+        // already registered from a previous openContainer() call
+      }
+      pyodide.FS.syncfs(true, (err) => {
+        if (err) {
+          console.warn("[ontobdc-pyodide] syncfs init warning:", err);
+        }
+      });
+
+      pyodide.globals.set("view_payload_json", JSON.stringify(WORKSTREAM_PAYLOAD));
+      pyodide.globals.set("container_mount_path", mountPath);
+      const resultProxy = await pyodide.runPythonAsync(WORKBOOK_PARSE_SCRIPT);
+      const result = JSON.parse(String(resultProxy));
+      if (resultProxy && typeof resultProxy.destroy === "function") {
+        try {
+          resultProxy.destroy();
+        } catch {
+          // no-op
+        }
+      }
+
+      // Step 3 — Apply live data + wire UI.
+      applyLiveWorkbookResult(result);
+      setConnected(resolvedDatasetHandle, resolvedDatasetHandle);
+
+      if (refreshBtn && WORKSTREAM_PAYLOAD) {
+        refreshBtn.disabled = false;
+        refreshBtn.hidden = false;
+      }
+    } catch (error) {
+      console.error(error);
+      const message = error instanceof Error ? error.message : String(error);
+      const userMessage = message.includes("datapackage.json")
+        ? t("datapackageJsonNotFound")
+        : message;
+      setConnectError(userMessage, t("connectFolder"));
+    } finally {
+      button.disabled = false;
+      if (!rawContainerHandle) {
+        button.textContent = t("connectFolder");
+      }
+      if (refreshBtn) {
+        refreshBtn.disabled = !rawContainerHandle;
+        if (rawContainerHandle && !refreshBtn.textContent) {
+          refreshBtn.textContent = t("refreshFromWorkbook");
+        }
+      }
+    }
+  }
+
+  function setConnected(rawHandle, resolvedDatasetHandle) {
+    rawContainerHandle = rawHandle;
+    datasetHandle = resolvedDatasetHandle ?? rawHandle;
+    document.querySelector(".connect-btn").textContent = t("reconnectFolder");
+    document.querySelector(".connect-btn").disabled = false;
     document.querySelector(".workspace-btn").disabled = false;
     document.querySelector(".subjects-btn").disabled = false;
-    for (const card of dimensionCards) card.onConnected();
+    const refreshBtn = document.querySelector(".refresh-btn");
+    if (refreshBtn && WORKSTREAM_PAYLOAD) {
+      refreshBtn.disabled = false;
+      refreshBtn.hidden = false;
+    }
   }
 
   function setConnectError(message, fallbackLabel) {
@@ -311,74 +564,49 @@
     button.textContent = message;
     button.disabled = false;
     setTimeout(() => {
-      if (!containerHandle) button.textContent = fallbackLabel;
+      if (!rawContainerHandle) button.textContent = fallbackLabel;
     }, 4000);
   }
 
-  // Browsers don't let a page pre-navigate showDirectoryPicker() to an
-  // arbitrary OS path (a site could otherwise probe/bias access to
-  // sensitive folders) — the first pick always requires the user to
-  // locate the folder themselves. But once picked, the handle is reusable:
-  // requestPermission() on that SAME handle shows a lightweight
-  // allow/deny prompt naming the already-known folder, no navigation
-  // required. That's the "just click allow" path for every visit after
-  // the first, including a first visit to a *different* Page in the same
-  // already-connected container this session.
-  async function connectFolder() {
-    const button = document.querySelector(".connect-btn");
-    const stored = await loadStoredHandle();
-    if (stored) {
-      button.textContent = t("requestingAccess");
-      button.disabled = true;
-      try {
-        const permission = await stored.requestPermission({ mode: "readwrite" });
-        if (permission === "granted") {
-          setConnected(stored);
-          return;
-        }
-        button.textContent = t("allowFolderAccess");
-        button.disabled = false;
-        return;
-      } catch (error) {
-        console.error(error);
-        // Stored handle is no longer valid (folder moved/deleted) — fall
-        // through to a fresh pick below.
-      }
-    }
-
-    button.textContent = t("connecting");
-    button.disabled = true;
-    try {
-      const handle = await window.showDirectoryPicker({ mode: "readwrite" });
-      await storeHandle(handle);
-      setConnected(handle);
-    } catch (error) {
-      if (error && error.name === "AbortError") {
-        button.textContent = t("connectFolder");
-        button.disabled = false;
-        return;
-      }
-      console.error(error);
-      setConnectError(t("connectionFailed"), t("connectFolder"));
-    }
-  }
-
-  async function tryReconnectSilently() {
+  async function tryReconnectSilentlyImpl() {
+    // Fire-and-forget silent reconnect kicked off by render() on load.
+    // NEVER falls through to showDirectoryPicker() (that API requires a
+    // real user gesture and would throw on an unattended onload). It only
+    // proceeds if:
+    //   (1) there is a stored handle already in IndexedDB, AND
+    //   (2) queryPermission("readwrite") already === "granted" this
+    //       session (no "Allow access?" prompt needed).
+    // If both conditions hold, acquireContainerHandle → openContainer()
+    // takes the fast "stored handle" path and never touches the picker.
+    // If ANYTHING fails, the botton falls back to the "connectFolder"
+    // label — no fake connected state is ever painted.
     const handle = await loadStoredHandle();
     if (!handle) return;
     try {
       const permission = await handle.queryPermission({ mode: "readwrite" });
-      if (permission === "granted") {
-        setConnected(handle);
+      if (permission !== "granted") {
+        document.querySelector(".connect-btn").textContent = t("allowFolderAccess");
         return;
       }
-      // Known folder, but permission needs a fresh (user-gesture-gated)
-      // grant this session — label the button so the click is obviously
-      // just a permission prompt, not a folder hunt.
-      document.querySelector(".connect-btn").textContent = t("allowFolderAccess");
-    } catch {
-      // Handle no longer valid (folder moved/deleted) — stay disconnected.
+      await openContainer();
+    } catch (error) {
+      console.warn("Silent reconnect failed, user will have to click manually:", error);
+      // Explicitly NOT fake-setting the button as connected. On any
+      // failure the label says "Conectar pasta" and user clicks themselves.
+      document.querySelector(".connect-btn").textContent = t("connectFolder");
     }
+  }
+
+  // Registers the attempt in pendingReconnectAttempt for its whole
+  // duration (including setConnected(), not just the permission check) so
+  // concurrent openContainer() clicks can wait it out instead of racing it
+  // on the same handle's permission APIs.
+  function tryReconnectSilently() {
+    const attempt = tryReconnectSilentlyImpl().finally(() => {
+      if (pendingReconnectAttempt === attempt) pendingReconnectAttempt = null;
+    });
+    pendingReconnectAttempt = attempt;
+    return attempt;
   }
 
   // --- Annotation runtime wiring ---
@@ -431,21 +659,21 @@
 
   async function openWorkspace() {
     const runtime = ensureAnnotationRuntime();
-    if (!runtime || !containerHandle) return;
+    if (!runtime || !datasetHandle) return;
     const body = openDialog(t("annotations"));
-    await runtime.openWorkspace(body, { containerHandle });
+    await runtime.openWorkspace(body, { containerHandle: datasetHandle });
   }
 
   async function openSubjectPage() {
     const runtime = ensureAnnotationRuntime();
-    if (!runtime || !containerHandle) return;
+    if (!runtime || !datasetHandle) return;
     const body = openDialog(t("subjects"));
-    await runtime.openSubjectPage(body, { containerHandle }, null);
+    await runtime.openSubjectPage(body, { containerHandle: datasetHandle }, null);
   }
 
   async function resolveFile(filePath) {
     const segments = filePath.split("/").filter(Boolean);
-    let directory = containerHandle;
+    let directory = datasetHandle;
     for (const segment of segments.slice(0, -1)) {
       directory = await directory.getDirectoryHandle(segment);
     }
@@ -455,20 +683,16 @@
 
   async function annotateResource(node, dimensionUri, button) {
     const runtime = ensureAnnotationRuntime();
-    if (!runtime || !containerHandle || !node) return;
+    if (!runtime || !datasetHandle || !node) return;
     const filePath = literal(node, `${OBDC_NS}filePath`);
     if (!filePath) return;
-    // This button is icon-only (an <svg>, no text) — never touch its
-    // textContent/innerHTML for loading/error feedback (that previously
-    // wiped the icon out and never restored it). disabled + title are
-    // enough signal here.
     const originalTitle = button.title;
     button.disabled = true;
     button.title = t("opening");
     try {
       const file = await resolveFile(filePath);
       await runtime.open({
-        containerHandle,
+        containerHandle: datasetHandle,
         file,
         mediaType: file.type,
         logicalSource: node["@id"],
@@ -479,25 +703,25 @@
       button.disabled = false;
       button.title = originalTitle;
     } catch (error) {
-      // Surfaced visibly on purpose: OntoBDCAnnotationSurface.createSurface
-      // throws a plain, human-readable message for the cases most likely
-      // here (e.g. "This format does not have an annotatable
-      // representation.", a failed pdf.js CDN fetch, or an image load
-      // error) — console.error alone made an earlier failure invisible.
       console.error(error);
       button.title = (error && error.message) || String(error);
       window.alert(`Could not open the annotation editor: ${(error && error.message) || error}`);
       setTimeout(() => {
-        button.disabled = !containerHandle;
+        button.disabled = !datasetHandle;
         button.title = originalTitle;
       }, 3000);
     }
   }
 
   function wireAnnotationControls() {
-    document.querySelector(".connect-btn").addEventListener("click", connectFolder);
+    document.querySelector(".connect-btn").addEventListener("click", openContainer);
     document.querySelector(".workspace-btn").addEventListener("click", openWorkspace);
     document.querySelector(".subjects-btn").addEventListener("click", openSubjectPage);
+    const refreshBtn = document.querySelector(".refresh-btn");
+    if (refreshBtn) {
+      refreshBtn.addEventListener("click", refreshFromWorkbook);
+      if (!WORKSTREAM_PAYLOAD) refreshBtn.hidden = true;
+    }
   }
 
   // --- Linkset editing (pyodide + rdflib, loaded lazily on first use) ---
@@ -548,6 +772,7 @@
 
   let pyodideInstance = null;
   let pyodideLoadPromise = null;
+  let pyodideHasOpenpyxl = false;
 
   function loadScriptTag(src) {
     return new Promise((resolve, reject) => {
@@ -559,8 +784,11 @@
     });
   }
 
-  async function ensurePyodide() {
-    if (pyodideInstance) return pyodideInstance;
+  async function ensurePyodide(options) {
+    const withOpenpyxl = Boolean(options && options.withOpenpyxl);
+    if (pyodideInstance && (!withOpenpyxl || pyodideHasOpenpyxl)) {
+      return pyodideInstance;
+    }
     if (!pyodideLoadPromise) {
       pyodideLoadPromise = (async () => {
         if (typeof loadPyodide !== "function") {
@@ -578,13 +806,558 @@
       pyodideLoadPromise = null;
       throw error;
     }
+    if (withOpenpyxl && !pyodideHasOpenpyxl) {
+      await pyodideInstance.runPythonAsync("import micropip\nawait micropip.install('openpyxl')");
+      pyodideHasOpenpyxl = true;
+    }
     return pyodideInstance;
+  }
+
+  // Matches the canonical reference runtime (techcenter-doc workstream_5w2h.js
+  // openContainer() Python block). Reads the dataset's `datapackage.json`,
+  // locates the "work_stream" resource Excel file, parses the worksheet with
+  // openpyxl, finds the row whose GlobalId matches the current elementId,
+  // then re-parses the WorkStream.ttl ICDD linkset (column ↔ property URI
+  // mapping) and the WorkStreamResource.ttl dimension ↔ resource relation
+  // linkset, plus the RO-Crate manifest for file display categories. Returns
+  // exactly the same shape as the reference runtime so callers downstream
+  // don't have to branch.
+  const WORKBOOK_PARSE_SCRIPT = `
+import json
+from pathlib import Path
+from urllib.parse import unquote
+
+from openpyxl import load_workbook
+from rdflib import Graph, Literal, Namespace, URIRef
+from rdflib.namespace import RDF
+
+try:
+    import ontobdc_trace as _trace
+    _trace_p = lambda msg: _trace.log(str(msg))
+except Exception:
+    _trace_p = lambda msg: None
+
+try:
+    import pyodide_js as _pjs
+    def _resync(label: str) -> None:
+        try:
+            _pjs.FS.syncfs(True, lambda _err=None: None)
+        except Exception as sync_err:
+            _trace_p("SYNC_FAIL_" + label + ":" + str(sync_err)[:200])
+except Exception:
+    def _resync(label: str) -> None:
+        return
+
+def _resolve_candidates(payload_key: str, *extra_candidates):
+    raw = payload.get(payload_key) or ""
+    candidates = []
+    if raw:
+        candidates.append(container / raw)
+    for entry in extra_candidates:
+        if isinstance(entry, str):
+            candidate_path = container / entry
+        else:
+            candidate_path = Path(entry)
+        if not any(str(c) == str(candidate_path) for c in candidates):
+            candidates.append(candidate_path)
+    chosen = None
+    for candidate in candidates:
+        try:
+            exists_p = candidate.exists()
+        except Exception:
+            exists_p = False
+        _trace_p("CANDIDATE_" + payload_key + "=" + str(candidate) + " EX=" + str(exists_p))
+        if exists_p and chosen is None:
+            chosen = candidate
+    if chosen is None and candidates:
+        chosen = candidates[0]
+    return chosen
+
+payload = json.loads(view_payload_json)
+container = Path(container_mount_path)
+_trace_p("CONTAINER=" + str(container) + " EX=" + str(container.exists()))
+
+_resync("pre_datapackage")
+datapackage_candidates = [
+    payload.get("datapackagePath") or "",
+    ".__ontobdc__/datapackage.json",
+    "__ontobdc__/datapackage.json",
+    "datapackage.json",
+]
+_dp_seen = set()
+_dp_ordered = []
+for _c in datapackage_candidates:
+    _norm = str(container / _c) if _c and not str(_c).startswith(str(container)) else str(_c)
+    if not _c or _norm in _dp_seen:
+        continue
+    _dp_seen.add(_norm)
+    _dp_ordered.append(_c)
+datapackage_path = _resolve_candidates("datapackagePath", *_dp_ordered)
+_resync("datapackage_read")
+_trace_p("TRY_datapackage_path=" + str(datapackage_path) + " EX=" + str(datapackage_path.exists()))
+datapackage_raw = datapackage_path.read_text(encoding="utf-8")
+datapackage = json.loads(datapackage_raw)
+_trace_p(
+    "DATAPACKAGE_RESOURCES_PREVIEW="
+    + json.dumps(datapackage.get("resources", []), ensure_ascii=False)[:1000]
+)
+resource = next(
+    (item for item in datapackage.get("resources", []) if item.get("name") == "work_stream"),
+    None,
+)
+if not resource:
+    raise ValueError(
+        "datapackage.json does not contain a resource named \"work_stream\".\n"
+        + "datapackage_path=" + str(datapackage_path) + "\n"
+        + "container_root_children="
+        + json.dumps(
+            [p.name for p in container.iterdir()][:50],
+            ensure_ascii=False,
+        )[:800]
+        + "\n"
+        + "resources="
+        + json.dumps(datapackage.get("resources", []), ensure_ascii=False)[:1200]
+    )
+workbook_path = (datapackage_path.parent / resource["path"]).resolve()
+_trace_p("WORKBOOK_PATH=" + str(workbook_path) + " EX=" + str(workbook_path.exists()))
+worksheet_name = (
+    resource.get("dialect", {})
+    .get("excel", {})
+    .get("sheet", "WorkStream")
+)
+
+entity_id = resource.get("entityIdentifier") or "work_stream"
+linkset_dir = datapackage_path.parent / "linkset"
+facade_candidates = [
+    payload.get("linksetPath") or "",
+    f".__ontobdc__/linkset/WorkStream.ttl",
+    f"{linkset_dir.name}/{entity_id}_linkset.ttl",
+    f"{linkset_dir.name}/WorkStream.ttl",
+    f"{linkset_dir.name}/facade.ttl",
+]
+# Dedupe while preserving order
+_facade_seen = set()
+_facade_ordered = []
+for _c in facade_candidates:
+    _norm = str(container / _c) if _c and not str(_c).startswith(str(container)) else str(_c)
+    if not _c or _norm in _facade_seen:
+        continue
+    _facade_seen.add(_norm)
+    _facade_ordered.append(_c)
+linkset_path = _resolve_candidates("linksetPath", *_facade_ordered)
+
+resource_candidates = [
+    payload.get("resourceLinksetPath") or "",
+    ".__ontobdc__/linkset/WorkStreamResource.ttl",
+    f"{linkset_dir.name}/WorkStreamResource.ttl",
+    f"{linkset_dir.name}/resource_linkset.ttl",
+]
+_resource_seen = set()
+_resource_ordered = []
+for _c in resource_candidates:
+    _norm = str(container / _c) if _c and not str(_c).startswith(str(container)) else str(_c)
+    if not _c or _norm in _resource_seen:
+        continue
+    _resource_seen.add(_norm)
+    _resource_ordered.append(_c)
+resource_linkset_path = _resolve_candidates("resourceLinksetPath", *_resource_ordered)
+
+# RO-Crate: dataset level first; if absent, container level (dataset folder's
+# sibling .__ontobdc__) because many generated containers ship a single shared
+# ro-crate-metadata.json at the container root, not duplicated per dataset.
+ro_crate_candidates = [
+    payload.get("roCratePath") or "",
+    ".__ontobdc__/ro-crate-metadata.json",
+]
+parent_meta = (container.parent / ".__ontobdc__" / "ro-crate-metadata.json")
+try:
+    if parent_meta.exists():
+        ro_crate_candidates.append(str(parent_meta))
+except Exception:
+    pass
+ro_crate_path = _resolve_candidates("roCratePath", *ro_crate_candidates)
+
+# File display ontology: dataset level first, then the shared container-level
+# asset path. The UI's own FILE_DISPLAY_PARSE_SCRIPT also has candidate paths
+# file.ttl / file_display.ttl, so we keep the same convention here.
+file_display_candidates = [
+    payload.get("fileDisplayOntologyPath") or "",
+    ".__ontobdc__/ontology/file_display.ttl",
+    ".__ontobdc__/ontology/file.ttl",
+]
+file_parent_candidates = [
+    container.parent / ".__ontobdc__" / "ontology" / "file_display.ttl",
+    container.parent / ".__ontobdc__" / "asset" / "infobim-view" / "ontology" / "file_display.ttl",
+    container.parent / ".__ontobdc__" / "ontology" / "file.ttl",
+    container.parent / ".__ontobdc__" / "asset" / "infobim-view" / "ontology" / "file.ttl",
+]
+for _c in file_parent_candidates:
+    try:
+        if _c.exists():
+            file_display_candidates.append(str(_c))
+    except Exception:
+        pass
+file_display_ontology_path = _resolve_candidates("fileDisplayOntologyPath", *file_display_candidates)
+
+dataset_prefix = str(payload.get("datasetPath") or "").strip("/")
+
+LS = Namespace("https://standards.iso.org/iso/21597/-1/ed-1/en/Linkset#")
+SCHEMA = Namespace("http://schema.org/")
+linkset = Graph()
+mappings = {}
+_resync("linkset")
+_trace_p("USING_linkset_path=" + str(linkset_path) + " EX=" + str(linkset_path.exists() if linkset_path is not None else "none"))
+icdd_mode = False
+if linkset_path is not None and linkset_path.exists():
+    linkset.parse(linkset_path, format="turtle")
+    icdd_links = list(linkset.subjects(RDF.type, LS.DirectedBinaryLink))
+    _trace_p("ICDD_links=" + str(len(icdd_links)))
+    if icdd_links:
+        icdd_mode = True
+        for link in icdd_links:
+            from_element = linkset.value(link, LS.hasFromLinkElement)
+            to_element = linkset.value(link, LS.hasToLinkElement)
+            from_identifier = linkset.value(from_element, LS.hasIdentifier)
+            to_identifier = linkset.value(to_element, LS.hasIdentifier)
+            column = linkset.value(from_identifier, LS.identifier)
+            facade_field = linkset.value(to_identifier, LS.uri)
+            if isinstance(column, Literal) and facade_field is not None:
+                mappings[str(column)] = str(facade_field)
+if not icdd_mode and linkset_path is not None and linkset_path.exists():
+    # No ICDD DirectedBinaryLink found. This dataset ships a facade.ttl
+    # (schema:identifier based FacadeField registry) instead. Derive the
+    # same column->uri mappings from those so downstream callers get an
+    # identical mappings dict shape either way.
+    FACADE = Namespace(str(linkset.identifier) + "#") if linkset.identifier else None
+    facade_field_type = URIRef("http://datacenter.app.br/ontology/productivity/entity/work_stream/facade.ttl#FacadeField")
+    for field in linkset.subjects(RDF.type, facade_field_type):
+        label_bearer = linkset.value(field, SCHEMA.identifier)
+        maps_to = linkset.value(field, URIRef("http://datacenter.app.br/ontology/productivity/entity/work_stream/facade.ttl#mapsToProperty"))
+        if label_bearer is not None and maps_to is not None:
+            mappings[str(label_bearer)] = str(maps_to)
+    _trace_p("FACADE_mappings_count=" + str(len(mappings)))
+
+_resync("workbook")
+workbook = load_workbook(workbook_path, data_only=True, read_only=True)
+worksheet = workbook[worksheet_name]
+headers = [str(cell.value or "").strip() for cell in worksheet[1]]
+record = None
+for values in worksheet.iter_rows(min_row=2, values_only=True):
+    candidate = dict(zip(headers, values))
+    if str(candidate.get("GlobalId") or "").strip() == payload["elementId"]:
+        record = candidate
+        break
+workbook.close()
+
+if record is None:
+    raise ValueError(
+        f"WorkStream not found in workbook: {payload['elementId']}"
+    )
+# Only enforce ICDD-linkset header coverage when the container actually
+# shipped an ICDD DirectedBinaryLink linkset. Facade.ttl-only containers
+# (and techcenter-doc style legacy containers where mappings is empty by
+# design) proceed with header -> WORKBOOK_COLUMN_TO_PROPERTY resolution.
+if icdd_mode and mappings and any(field not in mappings for field in headers):
+    missing = sorted(field for field in headers if field not in mappings)
+    raise ValueError(
+        "The ICDD linkset does not map workbook fields: " + ", ".join(missing)
+    )
+
+def values(item, key):
+    value = item.get(key)
+    if value is None:
+        return []
+    return value if isinstance(value, list) else [value]
+
+def text_values(item, *keys):
+    result = []
+    for key in keys:
+        for value in values(item, key):
+            if isinstance(value, dict):
+                value = value.get("@id") or value.get("@value")
+            if value is not None:
+                result.append(str(value))
+    return result
+
+FILE_DISPLAY = Namespace(
+    "https://w3id.org/ontobdc/ontology/file-display#"
+)
+file_display_graph = Graph()
+_resync("file_display")
+_trace_p("USING_file_display_ontology=" + str(file_display_ontology_path) + " EX=" + str(file_display_ontology_path.exists() if file_display_ontology_path is not None else "none"))
+if file_display_ontology_path is not None and file_display_ontology_path.exists():
+    file_display_graph.parse(file_display_ontology_path, format="turtle")
+display_profiles = []
+for profile in file_display_graph.subjects(
+    RDF.type,
+    FILE_DISPLAY.FileDisplayProfile,
+):
+    category = file_display_graph.value(
+        profile,
+        FILE_DISPLAY.displayCategory,
+    )
+    if category is None:
+        continue
+    display_profiles.append({
+        "category": str(category),
+        "requiredSemanticTypes": {
+            str(value).strip()
+            for value in file_display_graph.objects(
+                profile,
+                FILE_DISPLAY.requiredSemanticType,
+            )
+            if str(value).strip()
+        },
+        "mimeTypes": {
+            str(value).strip().lower()
+            for value in file_display_graph.objects(
+                profile,
+                FILE_DISPLAY.acceptedMimeType,
+            )
+            if str(value).strip()
+        },
+        "extensions": {
+            str(value).strip().lower()
+            for value in file_display_graph.objects(
+                profile,
+                FILE_DISPLAY.acceptedExtension,
+            )
+            if str(value).strip()
+        },
+    })
+
+def category_for(item, resource_id):
+    formats = {
+        value.strip().lower()
+        for value in text_values(item, "encodingFormat")
+        if value.strip()
+    }
+    semantic_types = {
+        value.strip()
+        for value in text_values(item, "@type", "additionalType")
+        if value.strip()
+    }
+    extension = Path(unquote(resource_id)).suffix.lower()
+
+    def semantic_name(value):
+        return value.rsplit("#", 1)[-1].rsplit("/", 1)[-1]
+
+    semantic_names = {semantic_name(value) for value in semantic_types}
+    for profile in display_profiles:
+        required_types = profile["requiredSemanticTypes"]
+        required_names = {semantic_name(value) for value in required_types}
+        if required_types and not (
+            semantic_types.intersection(required_types)
+            or semantic_names.intersection(required_names)
+        ):
+            continue
+        if (
+            formats.intersection(profile["mimeTypes"])
+            or extension in profile["extensions"]
+        ):
+            return profile["category"]
+    return None
+
+_resync("ro_crate")
+_trace_p("USING_ro_crate_path=" + str(ro_crate_path) + " EX=" + str(ro_crate_path.exists() if ro_crate_path is not None else "none"))
+try:
+    if ro_crate_path is None or not ro_crate_path.exists():
+        ro_crate = {"@graph": []}
+    else:
+        ro_crate_text = ro_crate_path.read_text(encoding="utf-8").strip()
+        ro_crate = json.loads(ro_crate_text) if ro_crate_text else {"@graph": []}
+except FileNotFoundError:
+    ro_crate = {"@graph": []}
+
+catalog_resources = []
+resources = []
+for item in ro_crate.get("@graph", []):
+    source_resource_id = item.get("@id")
+    types = set(text_values(item, "@type"))
+    if not source_resource_id or source_resource_id in (".", "./"):
+        continue
+    is_external_resource = (
+        "://" in source_resource_id
+        or source_resource_id.startswith("urn:")
+    )
+    resource_id = (
+        source_resource_id
+        if is_external_resource or not dataset_prefix
+        else f"{dataset_prefix}/{source_resource_id.lstrip('./')}"
+    )
+    if not types.intersection({
+        "File", "MediaObject", "DigitalDocument",
+        "CreativeWork", "Message", "EmailMessage",
+    }):
+        continue
+    names = text_values(item, "name")
+    formats = text_values(item, "encodingFormat")
+    category = category_for(item, source_resource_id)
+    display_parts = [
+        unquote(part)
+        for part in resource_id.split("/")
+        if part
+    ]
+    catalog_resource = {
+        "id": resource_id,
+        "sourceId": source_resource_id,
+        "name": (
+            unquote(names[0])
+            if names
+            else unquote(Path(resource_id).name)
+        ),
+        "displayParts": display_parts,
+        "encodingFormat": formats[0] if formats else "",
+    }
+    catalog_resources.append(catalog_resource)
+    if category is not None:
+        resources.append({
+            **catalog_resource,
+            "category": category,
+        })
+
+relationships = {}
+_resync("resource_linkset")
+_trace_p("USING_resource_linkset=" + str(resource_linkset_path) + " EX=" + str(resource_linkset_path.exists() if resource_linkset_path is not None else "none"))
+if resource_linkset_path is not None and resource_linkset_path.exists():
+    resource_linkset = Graph()
+    resource_linkset.parse(resource_linkset_path, format="turtle")
+    resource_id_by_endpoint = {
+        key: item["id"]
+        for item in resources
+        for key in (item["id"], item["sourceId"])
+    }
+
+    def endpoint_value(element):
+        identifier = resource_linkset.value(element, LS.hasIdentifier)
+        return (
+            resource_linkset.value(identifier, LS.uri)
+            or resource_linkset.value(identifier, LS.identifier)
+        )
+
+    for link in resource_linkset.subjects(RDF.type, LS.DirectedBinaryLink):
+        endpoints = [
+            endpoint_value(resource_linkset.value(link, LS.hasFromLinkElement)),
+            endpoint_value(resource_linkset.value(link, LS.hasToLinkElement)),
+        ]
+        endpoint_strings = [str(value) for value in endpoints if value is not None]
+        dimension_uri = next(
+            (
+                value for value in endpoint_strings
+                if value.startswith(payload["dimensionBaseUri"] + "/")
+            ),
+            None,
+        )
+        resource_id = next(
+            (
+                resource_id_by_endpoint[value]
+                for value in endpoint_strings
+                if value in resource_id_by_endpoint
+            ),
+            None,
+        )
+        if dimension_uri and resource_id:
+            relationships.setdefault(dimension_uri, []).append(resource_id)
+
+json.dumps(
+    {
+        "record": record,
+        "mappings": mappings,
+        "resources": resources,
+        "catalogResources": catalog_resources,
+        "relationships": relationships,
+        "workbookPath": str(workbook_path),
+        "linksetPath": str(linkset_path),
+    },
+    ensure_ascii=False,
+)
+`;
+
+  let activeMountPath = null;
+
+  async function openContainerFromHandle(handle) {
+    if (!WORKSTREAM_PAYLOAD) {
+      throw new Error("No WorkStream context payload present on this page.");
+    }
+    const resolved = await resolveContainerHandle(handle);
+    const pyodide = await ensurePyodide({ withOpenpyxl: true });
+    if (activeMountPath) {
+      try {
+        pyodide.FS.unmount(activeMountPath);
+      } catch {
+      }
+      activeMountPath = null;
+    }
+    const mountPath = `/container_${Date.now()}`;
+    pyodide.FS.mkdirTree(mountPath);
+    await pyodide.mountNativeFS(mountPath, resolved);
+    activeMountPath = mountPath;
+
+    pyodide.registerJsModule("ontobdc_trace", {
+      log: (msg) => {
+        console.log("[ontobdc-pyodide]", String(msg));
+      },
+    });
+    pyodide.FS.syncfs(true, (err) => {
+      if (err) console.warn("[ontobdc-pyodide] syncfs init warning:", err);
+    });
+
+    pyodide.globals.set("view_payload_json", JSON.stringify(WORKSTREAM_PAYLOAD));
+    pyodide.globals.set("container_mount_path", mountPath);
+    const resultProxy = await pyodide.runPythonAsync(WORKBOOK_PARSE_SCRIPT);
+    const result = JSON.parse(String(resultProxy));
+    if (resultProxy && typeof resultProxy.destroy === "function") {
+      try { resultProxy.destroy(); } catch { /* no-op */ }
+    }
+    return result;
+  }
+
+  async function refreshFromWorkbook() {
+    if (!rawContainerHandle) return;
+    const refreshBtn = document.querySelector(".refresh-btn");
+    const originalLabel = refreshBtn?.textContent || "";
+    try {
+      if (refreshBtn) {
+        refreshBtn.disabled = true;
+        refreshBtn.textContent = t("refreshingFromWorkbook");
+      }
+      const result = await openContainerFromHandle(rawContainerHandle);
+      applyLiveWorkbookResult(result);
+    } catch (error) {
+      console.error(error);
+      window.alert(`Could not refresh from workbook: ${error.message || error}`);
+    } finally {
+      if (refreshBtn) {
+        refreshBtn.disabled = !rawContainerHandle;
+        if (rawContainerHandle) refreshBtn.textContent = originalLabel || t("refreshFromWorkbook");
+      }
+    }
+  }
+
+  function applyLiveWorkbookResult(result, options) {
+    if (!result) return;
+    const fireCardOnConnected = !(options && options.fireCardOnConnected === false);
+    liveWorkbookRecord = result.record || null;
+    liveRelationships = result.relationships || null;
+    renderHeader();
+    // Re-mount every dimension card. The live record may have added a
+    // dimension value that the static JSON-LD left blank (so the card
+    // didn't even exist before this refresh), or removed one — a full
+    // re-render is simpler and safer than trying to patch individual
+    // cards' .dimension-value text nodes in-place.
+    renderDimensionCards();
+    applyStaticI18n();
+    if (fireCardOnConnected) {
+      for (const card of dimensionCards) {
+        if (card.onConnected) card.onConnected();
+      }
+    }
   }
 
   async function linksetFileHandle(kind, create) {
     const fileName = LINKSET_FILES[kind];
     if (!fileName) throw new Error(`Unknown linkset kind: ${kind}`);
-    const metadata = await containerHandle.getDirectoryHandle(".__ontobdc__", { create });
+    const metadata = await datasetHandle.getDirectoryHandle(".__ontobdc__", { create });
     const linksetDir = await metadata.getDirectoryHandle("linkset", { create });
     return linksetDir.getFileHandle(fileName, { create });
   }
@@ -765,7 +1538,7 @@ json.dumps({
   }
 
   async function loadAllLinks(kind) {
-    if (!containerHandle) return { entries: {}, allStatus: {} };
+    if (!datasetHandle) return { entries: {}, allStatus: {} };
     try {
       return await runLinksetOperation(kind, "read", null, null);
     } catch (error) {
@@ -897,9 +1670,9 @@ json.dumps({"profiles": profiles})
   let cachedFileDisplayPromise = null;
 
   async function readFileDisplayOntologyText() {
-    if (!containerHandle) return null;
+    if (!datasetHandle) return null;
     try {
-      const metadata = await containerHandle.getDirectoryHandle(".__ontobdc__", { create: false });
+      const metadata = await datasetHandle.getDirectoryHandle(".__ontobdc__", { create: false });
       const ontologyDir = await metadata.getDirectoryHandle("ontology", { create: false });
       let handle = null;
       for (const fileName of FILE_DISPLAY_ONTOLOGY_CANDIDATES) {
@@ -1087,7 +1860,7 @@ json.dumps({"profiles": profiles})
       // (silently swallowing clicks, no error) until the user happened
       // to open Workspace or Subjects first. Folder connection is the
       // only real precondition; the runtime creates itself on demand.
-      const ready = Boolean(containerHandle && typeof OntoBDCAnnotations !== "undefined");
+      const ready = Boolean(datasetHandle && typeof OntoBDCAnnotations !== "undefined");
       const viewButton = card.querySelector(".view-annotations-btn");
       viewButton.hidden = !node;
       viewButton.disabled = !ready;
@@ -1258,7 +2031,7 @@ json.dumps({"profiles": profiles})
     }
 
     async function toggleRelation(resourceId, button) {
-      if (!containerHandle) return;
+      if (!datasetHandle) return;
       const isRelated = relatedResourceIds.has(resourceId);
       const action = isRelated ? "unrelate" : "relate";
       const originalLabel = button.textContent;
@@ -1273,12 +2046,12 @@ json.dumps({"profiles": profiles})
         button.textContent = t("error");
         setTimeout(() => { button.textContent = originalLabel; }, 2500);
       } finally {
-        button.disabled = !containerHandle;
+        button.disabled = !datasetHandle;
       }
     }
 
     async function toggleSuggestion(resourceId, button) {
-      if (!containerHandle) return;
+      if (!datasetHandle) return;
       const isSuggested = suggestedResourceIds.has(resourceId);
       const action = isSuggested ? "unsuggest" : "suggest";
       const originalLabel = button.textContent;
@@ -1293,7 +2066,7 @@ json.dumps({"profiles": profiles})
         button.textContent = t("error");
         setTimeout(() => { button.textContent = originalLabel; }, 2500);
       } finally {
-        button.disabled = !containerHandle;
+        button.disabled = !datasetHandle;
       }
     }
 
@@ -1356,8 +2129,8 @@ json.dumps({"profiles": profiles})
           suggestBtn.type = "button";
           suggestBtn.className = "resource-suggest-btn";
           suggestBtn.textContent = suggestedResourceIds.has(nodeId) ? t("unsuggest") : t("suggest");
-          suggestBtn.disabled = !containerHandle;
-          suggestBtn.title = containerHandle ? "" : t("connectFolderFirst");
+          suggestBtn.disabled = !datasetHandle;
+          suggestBtn.title = datasetHandle ? "" : t("connectFolderFirst");
           suggestBtn.addEventListener("click", (event) => {
             event.stopPropagation();
             toggleSuggestion(nodeId, suggestBtn);
@@ -1368,8 +2141,8 @@ json.dumps({"profiles": profiles})
           relateBtn.type = "button";
           relateBtn.className = "resource-relate-btn";
           relateBtn.textContent = relatedResourceIds.has(nodeId) ? t("unrelate") : t("relate");
-          relateBtn.disabled = !containerHandle;
-          relateBtn.title = containerHandle ? "" : t("connectFolderFirst");
+          relateBtn.disabled = !datasetHandle;
+          relateBtn.title = datasetHandle ? "" : t("connectFolderFirst");
           relateBtn.addEventListener("click", (event) => {
             event.stopPropagation();
             toggleRelation(nodeId, relateBtn);
@@ -1445,9 +2218,9 @@ json.dumps({"profiles": profiles})
     // via listAnnotations() for this tile's own rendering.
     async function loadResourceAnnotations(node) {
       const runtime = ensureAnnotationRuntime();
-      if (!runtime || !containerHandle || !node) return [];
+      if (!runtime || !datasetHandle || !node) return [];
       const scratch = document.createElement("div");
-      await runtime.openWorkspace(scratch, { containerHandle });
+      await runtime.openWorkspace(scratch, { containerHandle: datasetHandle });
       const context = { logicalSource: node["@id"], representationSource: node["@id"] };
       return runtime.listAnnotations().filter((annotation) => OntoBDCAnnotationModel.matchesContext(annotation, context));
     }
@@ -1524,7 +2297,7 @@ json.dumps({"profiles": profiles})
       } catch (error) {
         console.error(error);
       } finally {
-        button.disabled = !(annotationRuntime && containerHandle);
+        button.disabled = !(annotationRuntime && datasetHandle);
         button.innerHTML = originalLabel;
       }
     }
@@ -1581,32 +2354,61 @@ json.dumps({"profiles": profiles})
     }
   }
 
+  // Each setup step below is independent: a resource tree failing to build
+  // must not stop Relate/Suggest from wiring up, and vice versa. Before this
+  // guard, render() was one unbroken call chain — any single step throwing
+  // (sync or via an unguarded promise elsewhere reacting to this render)
+  // silently skipped every step after it, so a single unrelated failure
+  // could look like "nothing on the page works" instead of what it was.
+  //
+  // `step` may be async (e.g. tryReconnectSilently touches IndexedDB and
+  // the File System Access API). A plain try/catch here only guards the
+  // *synchronous* prefix up to `step`'s first `await` -- anything that
+  // rejects after that runs outside this try block entirely and becomes an
+  // unhandled promise rejection instead of a caught, labeled error. Await
+  // the result and catch on it too so async steps get the same isolation
+  // sync ones do.
+  function runRenderStep(label, step) {
+    try {
+      const result = step();
+      if (result && typeof result.catch === "function") {
+        result.catch((error) => {
+          console.error(`[work_stream_view] "${label}" step failed:`, error);
+        });
+      }
+    } catch (error) {
+      console.error(`[work_stream_view] "${label}" step failed:`, error);
+    }
+  }
+
   function render() {
-    applyStaticI18n();
+    runRenderStep("applyStaticI18n", applyStaticI18n);
+
     graphNodes = loadGraph();
     const resourceId = document.querySelector(".onto-page")?.getAttribute("data-ontobdc-resource") || "";
     selfNode = graphNodes.find((node) => node && node["@id"] === resourceId) || null;
-    const identifier = renderHeader();
 
-    if (typeof OntoBDCWorkStreamContext !== "undefined" && selfNode) {
-      workStreamContext = OntoBDCWorkStreamContext.create({
-        workStreamId: identifier || selfNode["@id"],
-        workStreamUri: selfNode["@id"],
-      });
-    }
+    let identifier = "";
+    runRenderStep("renderHeader", () => { identifier = renderHeader(); });
 
-    renderDimensionCards();
-    wireAnnotationControls();
+    runRenderStep("workStreamContext", () => {
+      if (typeof OntoBDCWorkStreamContext !== "undefined" && selfNode) {
+        workStreamContext = OntoBDCWorkStreamContext.create({
+          workStreamId: identifier || selfNode["@id"],
+          workStreamUri: selfNode["@id"],
+        });
+      }
+    });
+
+    runRenderStep("renderDimensionCards", renderDimensionCards);
+    runRenderStep("wireAnnotationControls", wireAnnotationControls);
 
     if (typeof OntoBDCAnnotations !== "undefined") {
-      try {
-        ensureAnnotationRuntime();
-      } catch (error) {
-        console.error(error);
-      }
-      tryReconnectSilently();
+      runRenderStep("ensureAnnotationRuntime", ensureAnnotationRuntime);
+      runRenderStep("tryReconnectSilently", tryReconnectSilently);
     } else {
-      document.querySelector(".connect-btn").hidden = true;
+      const connectBtn = document.querySelector(".connect-btn");
+      if (connectBtn) connectBtn.hidden = true;
     }
   }
 

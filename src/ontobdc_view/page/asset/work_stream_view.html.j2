@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{{ page_title }}</title>
+{% if has_workstream_payload %}
+<script defer src="https://cdn.jsdelivr.net/pyodide/v0.27.2/full/pyodide.js"></script>
+{% endif %}
 <script>
   // This Page is a separate document from the Surface it was opened from
   // (onto-workstream-tile's "open" link), so the active theme doesn't carry
@@ -36,6 +39,11 @@
 <body>
 <script type="application/ld+json" id="ontobdc-page-jsonld">{{ entity_json }}</script>
 <script type="application/json" id="ontobdc-i18n">{{ i18n_json | safe }}</script>
+{% if has_workstream_payload %}
+<script>
+  window.infoBimWorkStreamView = {{ workstream_payload_json | safe }};
+</script>
+{% endif %}
 <main class="onto-page" data-ontobdc-resource="{{ entity_id }}">
   <header class="onto-page-header">
     <a class="icon-btn back-link" href="../../../index.html" data-i18n-title="backToSurface" data-i18n-aria-label="backToSurface">
@@ -47,7 +55,9 @@
       <span class="breadcrumb-crumb is-current" data-i18n="breadcrumbWorkStream"></span>
     </div>
     <div class="header-actions">
+      <span class="connection-status" data-status="idle" role="status" aria-hidden="true"></span>
       <button type="button" class="connect-btn" data-i18n="connectFolder" data-i18n-title="connectFolderTitle" data-i18n-aria-label="connectFolder"></button>
+      <button type="button" class="refresh-btn" disabled data-i18n="refreshFromWorkbook" data-i18n-title="refreshFromWorkbookTitle" data-i18n-aria-label="refreshFromWorkbook"></button>
       <button type="button" class="icon-btn workspace-btn" disabled data-i18n-title="openAnnotationWorkspace" data-i18n-aria-label="openAnnotationWorkspace">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
       </button>
@@ -71,8 +81,19 @@
 <script>
 {{ annotation_runtime_js }}
 </script>
+{% if js_content %}
 <script>
 {{ js_content }}
 </script>
+{% endif %}
+{% if has_workstream_payload %}
+{# Generated per-container by the work_stream_*_script_generated
+   Capabilities (ontobdc-wip), not packaged with ontobdc_view — see
+   EntityViewRenderAdapter._WORKSTREAM_SCRIPT_NAMES for the authoritative
+   load order (dimension_card.js's render() bootstrap must load last). #}
+{% for script_name in workstream_script_names %}
+<script defer src="../../asset/work_stream_view/{{ script_name }}.js"></script>
+{% endfor %}
+{% endif %}
 </body>
 </html>

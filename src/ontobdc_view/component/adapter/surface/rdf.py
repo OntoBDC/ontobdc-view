@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from importlib.resources import files
 from typing import List, Optional
 
 from rdflib import Graph, Namespace, URIRef
 from rdflib.namespace import RDF
 
+from ontobdc.shared.adapter.config import UnsetProjectRootConfigDataAdapter
+from ontobdc.shared.adapter.ontology import OntologyConfigAdapter
 from ontobdc.shared.domain.model.surface import (
     Alignment,
     ComponentPlacementDefinition,
@@ -16,6 +17,13 @@ from ontobdc.shared.domain.model.surface import (
 )
 
 VIEW = Namespace("http://datacenter.app.br/ontology/ontobdc/domain/view.ttl#")
+
+# Same "central adapter, no local workarounds" pattern every other
+# module-level ontology lookup in ontobdc uses (see logo_tile.py's own
+# `_VIEW` adapter) -- resolves through OntologyConfigAdapter's 3-tier chain
+# (brasidatacenter package -> project .__ontobdc__/config.yaml override ->
+# legacy ontology cache) instead of a copy bundled inside this package.
+_ONTOLOGY_ADAPTER = OntologyConfigAdapter(config_adapter=UnsetProjectRootConfigDataAdapter())
 
 _REGION_ROLE_BY_TYPE = {
     VIEW.OperationRegion: "OperationRegion",
@@ -72,11 +80,11 @@ class SurfaceRdfParser:
 
     @classmethod
     def default_surface_layouts(cls) -> List[SurfaceDefinition]:
-        source = files("ontobdc_view").joinpath(
-            "component", "asset", "default_surface_layouts.ttl"
-        ).read_text(encoding="utf-8")
+        path = _ONTOLOGY_ADAPTER.get_ontology_path(
+            "obdc_abox_surface_layouts", "default_surface_layouts"
+        )
         graph = Graph()
-        graph.parse(data=source, format="turtle")
+        graph.parse(path, format="turtle")
         return cls.parse_default_surface_layouts(graph)
 
     @classmethod

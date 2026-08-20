@@ -4,10 +4,10 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ontobdc-view"
-version = "0.4.0"
+version = "0.5.0"
 description = "Browser presentation components and embeddable assets for OntoBDC views."
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 license = { text = "Apache-2.0" }
 authors = [
   { name = "Elias Magalhaes" }
@@ -16,6 +16,8 @@ dependencies = [
     "hatchling>=1.26",
     "editables",
     "PyYAML>=6.0",
+    "rdflib",
+    "ontobdc @ git+https://github.com/EliasMPJunior/ontobdc-wip.git@v0.18",
 ]
 keywords = ["ontobdc", "web-components", "presentation", "offline", "html"]
 classifiers = [
@@ -39,11 +41,14 @@ test = ["pytest-playwright"]
 Homepage = "https://github.com/EliasMPJunior/ontobdc-view"
 Repository = "https://github.com/EliasMPJunior/ontobdc-view"
 
+[tool.hatch.metadata]
+allow-direct-references = true
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/ontobdc_view"]
 
 [tool.hatch.build.targets.wheel.package-data]
-"*" = ["**/*.js", "**/*.css", "**/*.j2", "**/*.ttl", "**/*.yaml"]
+"*" = ["**/*.js", "**/*.css", "**/*.j2", "**/*.ttl", "**/*.yaml", "**/*.html"]
 
 [tool.hatch.build.targets.sdist]
 include = [

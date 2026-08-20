@@ -1,0 +1,374 @@
+/* Follows the same --onto-theme-* custom properties the rest of the page
+   does (set on document.documentElement by onto-theme-tile) instead of a
+   fixed dark palette, so this content stays in sync with whatever theme
+   the reader already picked -- the dark values below are only the
+   fallback for when those variables aren't set at all. */
+.ontobdc-subject-page {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  gap: 0;
+  min-height: 0;
+  color: var(--onto-theme-foreground, #e5eefc);
+  font-size: .875rem;
+  line-height: 1.5;
+}
+.ontobdc-subject-page code,
+.ontobdc-subject-page .mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* ---------- sidebar (subject switcher) ---------- */
+.ontobdc-subject-page-sidebar {
+  border-right: 1px solid color-mix(in srgb, var(--onto-theme-foreground, #e5eefc) 20%, transparent);
+  padding-right: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: .6rem;
+  min-height: 0;
+}
+.ontobdc-subject-page-sidebar-eyebrow {
+  margin: 0;
+  font-size: .68rem;
+  font-weight: 800;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--onto-theme-foreground, #e5eefc) 55%, transparent);
+}
+.ontobdc-subject-page-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+}
+.ontobdc-subject-page-list button {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  width: 100%;
+  padding: .5rem .6rem;
+  border-radius: .6rem;
+  border: 1px solid transparent;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.ontobdc-subject-page-list button:hover {
+  background: color-mix(in srgb, var(--onto-theme-foreground, #e5eefc) 8%, transparent);
+}
+.ontobdc-subject-page-list button[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--onto-theme-accent, #67e8f9) 16%, transparent);
+  border-color: color-mix(in srgb, var(--onto-theme-accent, #67e8f9) 45%, transparent);
+}
+.ontobdc-subject-page-item-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+  font-size: .8125rem;
+}
+.ontobdc-subject-page-item-label.is-unlabeled {
+  font-style: italic;
+  font-weight: 500;
+  color: color-mix(in srgb, var(--onto-theme-foreground, #e5eefc) 62%, transparent);
+}
+.ontobdc-subject-page-item-count {
+  flex: none;
+  font-size: .7rem;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 999px;
+  color: color-mix(in srgb, var(--onto-theme-foreground, #e5eefc) 62%, transparent);
+  background: color-mix(in srgb, var(--onto-theme-foreground, #e5eefc) 10%, transparent);
+}
+.ontobdc-subject-page-list button[aria-pressed="true"] .ontobdc-subject-page-item-count {
+  color: var(--onto-theme-accent, #67e8f9);
+  background: color-mix(in srgb, var(--onto-theme-accent, #67e8f9) 20%, transparent);
+}
+
+/* ---------- detail column ---------- */
+.ontobdc-subject-page-detail {
+  min-width: 0;
+  padding-left: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-height: 0;
+}
+.ontobdc-subject-page-header { display: grid; gap: .55rem; }
+.ontobdc-subject-page-eyebrow {
+  margin: 0;
+  font-size: .68rem;
+  font-weight: 800;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--onto-theme-accent, #67e8f9);
+}
+.ontobdc-subject-page-title {
+  margin: 0;
+  font-size: 1.4rem;
+  font-weight: 800;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+.ontobdc-subject-page-title.is-unlabeled {
+  font-weight: 700;
+  font-style: italic;
+  color: color-mix(in srgb, var(--onto-theme-foreground, #e5eefc) 65%, transparent);
+}
+.ontobdc-subject-page-description {
+  margin: 0;
+  max-width: 62ch;
+  color: color-mix(in srgb, var(--onto-theme-foreground, #e5eefc) 72%, transparent);
+}
+.ontobdc-subject-page-technical {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+}
+.ontobdc-subject-page-technical-tag {
+  flex: none;
+  font-size: .62rem;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--onto-theme-foreground, #e5eefc) 48%, transparent);
+  border: 1px solid color-mix(in srgb, var(--onto-theme-foreground, #e5eefc) 22%, transparent);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+.ontobdc-subject-page-technical code {
+  font-size: .75rem;
+  color: color-mix(in srgb, var(--onto-theme-foreground, #e5eefc) 48%, transparent);
+  overflow-wrap: anywhere;
+}
+.ontobdc-subject-page-hierarchy {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.ontobdc-subject-page-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px 3px 7px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--onto-theme-foreground, #e5eefc) 22%, transparent);
+  background: color-mix(in srgb, var(--onto-theme-foreground, #e5eefc) 6%, transparent);
+  font-size: .72rem;
+  font-weight: 600;
+  color: color-mix(in srgb, var(--onto-theme-foreground, #e5eefc) 78%, transparent);
+}
+.ontobdc-subject-page-chip svg {
+  flex: none;
+  opacity: .7;
+}
+.ontobdc-subject-page-stats {
+  display: flex;
+  flex-wrap: wrap;
+}
+.ontobdc-subject-page-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 0 14px;
+  border-left: 1px solid color-mix(in srgb, var(--onto-theme-foreground, #e5eefc) 20%, transparent);
+}
+.ontobdc-subject-page-stat:first-child { padding-left: 0; border-left: 0; }
+.ontobdc-subject-page-stat-value {
+  font-size: 1rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.ontobdc-subject-page-stat-label {
+  font-size: .62rem;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--onto-theme-foreground, #e5eefc) 48%, transparent);
+}
+
+/* ---------- tabs ---------- */
+.ontobdc-subject-page > .ontobdc-subject-page-detail > nav {
+  display: flex;
+  gap: 4px;
+}
+.ontobdc-subject-page-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: color-mix(in srgb, var(--onto-theme-foreground, #e5eefc) 68%, transparent);
+  font: inherit;
+  font-size: .8rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.ontobdc-subject-page-tab svg { flex: none; opacity: .8; }
+.ontobdc-subject-page-tab:hover {
+  background: color-mix(in srgb, var(--onto-theme-foreground, #e5eefc) 8%, transparent);
+}
+.ontobdc-subject-page-tab[aria-pressed="true"] {
+  color: var(--onto-theme-accent, #67e8f9);
+  background: color-mix(in srgb, var(--onto-theme-accent, #67e8f9) 16%, transparent);
+}
+.ontobdc-subject-page-tab[aria-pressed="true"] svg { opacity: 1; }
+
+.ontobdc-subject-page-panel {
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+}
+
+/* ---------- category badges + left-edge accent ---------- */
+.ontobdc-subject-page-cat {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  font-size: .62rem;
+  font-weight: 800;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 999px;
+}
+.ontobdc-subject-page-cat-note { background: color-mix(in srgb, var(--onto-theme-accent, #67e8f9) 20%, transparent); color: var(--onto-theme-accent, #67e8f9); }
+.ontobdc-subject-page-cat-issue { background: color-mix(in srgb, #f87171 22%, transparent); color: #f87171; }
+.ontobdc-subject-page-cat-classification { background: color-mix(in srgb, #c084fc 22%, transparent); color: #c084fc; }
+.ontobdc-subject-page-cat-location { background: color-mix(in srgb, #4ade80 22%, transparent); color: #4ade80; }
+.ontobdc-subject-page-cat-record { background: color-mix(in srgb, #fbbf24 24%, transparent); color: #fbbf24; }
+
+/* ---------- item cards (shared by Space/Timeline/People) ---------- */
+.ontobdc-subject-page-resource-group { display: flex; flex-direction: column; gap: .6rem; }
+.ontobdc-subject-page-resource-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: .75rem;
+  font-weight: 800;
+  color: color-mix(in srgb, var(--onto-theme-foreground, #e5eefc) 72%, transparent);
+}
+.ontobdc-subject-page-resource-heading .mono {
+  font-weight: 600;
+  font-size: .68rem;
+  color: color-mix(in srgb, var(--onto-theme-foreground, #e5eefc) 48%, transparent);
+}
+.ontobdc-subject-page-cluster-label {
+  font-size: .68rem;
+  font-weight: 700;
+  color: color-mix(in srgb, var(--onto-theme-foreground, #e5eefc) 48%, transparent);
+}
+.ontobdc-subject-page-cluster { display: flex; flex-direction: column; gap: 6px; margin-top: 2px; }
+.ontobdc-subject-page-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 11px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--onto-theme-foreground, #e5eefc) 20%, transparent);
+  border-left-width: 4px;
+  background: color-mix(in srgb, var(--onto-theme-foreground, #e5eefc) 4%, transparent);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.ontobdc-subject-page-item:hover {
+  background: color-mix(in srgb, var(--onto-theme-foreground, #e5eefc) 8%, transparent);
+}
+.ontobdc-subject-page-item[aria-current="true"] {
+  border-color: var(--onto-theme-accent, #67e8f9);
+  box-shadow: 0 0 0 1px var(--onto-theme-accent, #67e8f9);
+}
+.ontobdc-subject-page-item.ontobdc-subject-page-cat-border-note { border-left-color: var(--onto-theme-accent, #67e8f9); }
+.ontobdc-subject-page-item.ontobdc-subject-page-cat-border-issue { border-left-color: #f87171; }
+.ontobdc-subject-page-item.ontobdc-subject-page-cat-border-classification { border-left-color: #c084fc; }
+.ontobdc-subject-page-item.ontobdc-subject-page-cat-border-location { border-left-color: #4ade80; }
+.ontobdc-subject-page-item.ontobdc-subject-page-cat-border-record { border-left-color: #fbbf24; }
+.ontobdc-subject-page-item-body { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.ontobdc-subject-page-item-snippet {
+  font-size: .8125rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ontobdc-subject-page-item-meta {
+  font-size: .68rem;
+  color: color-mix(in srgb, var(--onto-theme-foreground, #e5eefc) 48%, transparent);
+}
+
+/* ---------- timeline tab ---------- */
+.ontobdc-subject-page-timeline { display: flex; flex-direction: column; }
+.ontobdc-subject-page-timeline-row { display: grid; grid-template-columns: 74px 18px 1fr; gap: 0 10px; }
+.ontobdc-subject-page-timeline-time {
+  font-size: .68rem;
+  color: color-mix(in srgb, var(--onto-theme-foreground, #e5eefc) 48%, transparent);
+  padding-top: 10px;
+  text-align: right;
+}
+.ontobdc-subject-page-timeline-rail { display: flex; flex-direction: column; align-items: center; }
+.ontobdc-subject-page-timeline-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--onto-theme-accent, #67e8f9);
+  margin-top: 12px;
+  flex: none;
+}
+.ontobdc-subject-page-timeline-line {
+  width: 1px;
+  flex: 1;
+  background: color-mix(in srgb, var(--onto-theme-foreground, #e5eefc) 20%, transparent);
+}
+.ontobdc-subject-page-timeline-row:last-child .ontobdc-subject-page-timeline-line { display: none; }
+.ontobdc-subject-page-timeline-row .ontobdc-subject-page-item { margin: 3px 0 10px; }
+
+/* ---------- people tab ---------- */
+.ontobdc-subject-page-people-group { display: flex; flex-direction: column; gap: 8px; }
+.ontobdc-subject-page-people-heading { display: flex; align-items: center; gap: 9px; }
+.ontobdc-subject-page-avatar {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: .68rem;
+  font-weight: 800;
+  background: color-mix(in srgb, var(--onto-theme-accent, #67e8f9) 22%, transparent);
+  color: var(--onto-theme-accent, #67e8f9);
+}
+.ontobdc-subject-page-people-name { font-size: .8125rem; font-weight: 700; }
+.ontobdc-subject-page-role-tag {
+  font-size: .62rem;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--onto-theme-foreground, #e5eefc) 48%, transparent);
+  margin-right: 6px;
+}
+
+.ontobdc-subject-page-empty {
+  font-size: .8125rem;
+  color: color-mix(in srgb, var(--onto-theme-foreground, #e5eefc) 48%, transparent);
+}
+
+@media (max-width: 720px) {
+  .ontobdc-subject-page { grid-template-columns: 1fr; }
+  .ontobdc-subject-page-sidebar {
+    border-right: 0;
+    border-bottom: 1px solid color-mix(in srgb, var(--onto-theme-foreground, #e5eefc) 20%, transparent);
+    padding-right: 0;
+    padding-bottom: .75rem;
+  }
+  .ontobdc-subject-page-detail { padding-left: 0; }
+}

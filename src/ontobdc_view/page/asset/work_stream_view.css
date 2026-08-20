@@ -2,6 +2,13 @@
   color-scheme: light dark;
 }
 * , *::before, *::after { box-sizing: border-box; }
+/* The browser's own [hidden] { display: none } UA rule has the same
+   specificity (0,1,0) as any single class selector, so any later class
+   rule that sets its own `display` (e.g. .icon-btn { display: inline-flex })
+   silently wins over `hidden` and leaves the element visible/clickable.
+   !important restores `hidden`'s intended meaning regardless of what else
+   targets the element. */
+[hidden] { display: none !important; }
 html, body {
   margin: 0;
   padding: 0;
@@ -61,6 +68,33 @@ body {
   background: transparent;
   color: var(--onto-theme-accent, #0ea5e9);
   cursor: pointer;
+}
+.connection-status {
+  inline-size: 9px;
+  block-size: 9px;
+  border-radius: 50%;
+  flex: none;
+  background: color-mix(in srgb, var(--onto-theme-foreground, #0f172a) 30%, transparent);
+  transition: background-color .2s ease;
+}
+.connection-status[data-status="connecting"] {
+  background: #f59e0b;
+  animation: onto-connection-pulse 1s ease-in-out infinite;
+}
+.connection-status[data-status="connected"] {
+  background: #22c55e;
+  animation: none;
+}
+.connection-status[data-status="error"] {
+  background: #ef4444;
+  animation: none;
+}
+@keyframes onto-connection-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .35; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .connection-status[data-status="connecting"] { animation: none; }
 }
 .connect-btn:disabled {
   opacity: .6;
@@ -413,15 +447,17 @@ body {
 /* This hosts ontobdc's own OntoBDCAnnotationWorkspace/SubjectPage
    components (openWorkspace()/openSubjectPage() below) — the exact
    same component family used inside .ontobdc-annotation-dialog (the
-   create/edit annotation editor, further down this file). Those
-   components style their own text as light-on-dark
+   create/edit annotation editor, further down this file). Giving this
+   dialog the light theme it had before inherited none of the
+   editor/workspace's own light-on-dark variable
    (annotation_workspace.css's `color: var(--ontobdc-annotation-text,
-   #e5eefc)`), since they were only ever designed to live inside that
-   dark dialog. Giving this dialog the light theme it had before
-   inherited none of that variable and rendered near-white text on a
-   near-white background — unreadable. Matching the editor's dark
-   theme here instead keeps both annotation-related dialogs visually
-   consistent and makes the text legible.
+   #e5eefc)`) and rendered near-white text on a near-white background —
+   unreadable. Matching the editor's dark theme here instead keeps both
+   annotation-related dialogs visually consistent and makes the text
+   legible. SubjectPage is the one exception: it paints its own surface
+   from the page's --onto-theme-* variables (annotation_subject_page.css)
+   instead of inheriting this wrapper's color, so it follows whichever
+   theme the reader already picked rather than staying dark-only.
 */
 .onto-annotation-dialog {
   width: min(90vw, 900px);
