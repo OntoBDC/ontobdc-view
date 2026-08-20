@@ -17,7 +17,6 @@ dependencies = [
     "editables",
     "PyYAML>=6.0",
     "rdflib",
-    "ontobdc @ git+https://github.com/EliasMPJunior/ontobdc-wip.git@v0.18",
 ]
 keywords = ["ontobdc", "web-components", "presentation", "offline", "html"]
 classifiers = [
