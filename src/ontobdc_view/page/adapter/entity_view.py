@@ -7,8 +7,38 @@ from ontobdc_view.shared.domain.port.entity_view_render import EntityViewRenderP
 
 from .asset import PageAssetAdapter
 from .descriptor import PageDescriptorAdapter
-from .ontobdc_runtime_asset import OntobdcRuntimeAssetAdapter
+from .runtime import OntobdcRuntimeAssetAdapter
+from .gantt_payload import GanttPayloadAdapter
 from .workstream_payload import WorkstreamPayloadAdapter
+
+
+# This package declares no dependency on ontobdc, so the url-state bootstrap
+# it embeds has to be optional: importing it at module scope made
+# `import ontobdc_view` itself fail against any ontobdc without the symbol.
+# The parameter names are the contract, not the import — they are declared
+# here so a Page keeps carrying state even when the bootstrap is absent, the
+# same self-sufficiency every Tile is held to.
+LANGUAGE_PARAM = "lang"
+THEME_PARAM = "theme"
+
+
+def _url_state_bootstrap(defaults: dict) -> str:
+    """The bootstrap script tag, or "" when ontobdc does not provide one.
+
+    An empty bootstrap costs this Page its URL normalization, nothing more:
+    the theme script and the back-link both resolve presentation state on
+    their own, so the Page still opens and navigates in the state its link
+    carried.
+    """
+    try:
+        from ontobdc.view.adapter.surface.document import build_url_state_bootstrap
+    except ImportError:
+        return ""
+    try:
+        return build_url_state_bootstrap(defaults)
+    except Exception:
+        return ""
+
 
 _DCTERMS_IDENTIFIER = "http://purl.org/dc/terms/identifier"
 
@@ -21,17 +51,33 @@ _DCTERMS_IDENTIFIER = "http://purl.org/dc/terms/identifier"
 # packaged with ontobdc_view itself — hence the relative <script src>
 # rather than an inlined {{ js_content }} block.
 _WORKSTREAM_SCRIPT_NAMES = (
+    "xlsx-0.18.5.full.min",
     "i18n_apply",
     "graph_reader",
     "csv_preview",
     "container_connection",
     "connection_state",
+    "chrome_controls",
     "annotation_bridge",
     "pyodide_runtime",
     "linkset_operations",
     "file_category",
     "dimension_card",
 )
+
+_GANTT_SCRIPT_NAMES = (
+    "xlsx-0.18.5.full.min",
+    "i18n_apply",
+    "graph_reader",
+    "container_connection",
+    "connection_state",
+    "chrome_controls",
+    "pyodide_runtime",
+    "task_table_timeline",
+    "dependency_arrows",
+)
+
+_IFC_WORK_SCHEDULE_TYPE_URI = "https://infobim.org/ontology/ns#IfcWorkSchedule"
 
 
 class EntityViewRenderAdapter(EntityViewRenderPort):
@@ -57,11 +103,13 @@ class EntityViewRenderAdapter(EntityViewRenderPort):
         page_asset: Optional[PageAssetAdapter] = None,
         runtime_asset: Optional[OntobdcRuntimeAssetAdapter] = None,
         workstream_payload: Optional[WorkstreamPayloadAdapter] = None,
+        gantt_payload: Optional[GanttPayloadAdapter] = None,
     ) -> None:
         self._page_descriptor = page_descriptor or PageDescriptorAdapter()
         self._page_asset = page_asset or PageAssetAdapter()
         self._runtime_asset = runtime_asset or OntobdcRuntimeAssetAdapter()
         self._workstream_payload = workstream_payload or WorkstreamPayloadAdapter()
+        self._gantt_payload = gantt_payload or GanttPayloadAdapter()
 
     def render_entity_view(
         self,
@@ -80,7 +128,16 @@ class EntityViewRenderAdapter(EntityViewRenderPort):
         metadata = descriptor.METADATA
         base_name = metadata.template.removesuffix(".html.j2")
         template_text = self._page_asset.read_page_asset(metadata.template)
-        css_content = self._page_asset.read_page_asset(f"{base_name}.css")
+        # Chrome first, the Page's own stylesheet after it, so a Page can
+        # override any shared rule while none of them has to restate the
+        # header, breadcrumb and connection buttons it shares with every
+        # other Page.
+        css_content = "\n".join(
+            (
+                self._page_asset.read_page_asset("page_chrome.css"),
+                self._page_asset.read_page_asset(f"{base_name}.css"),
+            )
+        )
         # Not every Page ships a packaged monolithic `<base_name>.js` —
         # the WorkStream Page's runtime is generated per-container instead
         # (see _WORKSTREAM_SCRIPT_NAMES below), so its own `work_stream_view.js`
@@ -100,11 +157,38 @@ class EntityViewRenderAdapter(EntityViewRenderPort):
         from ontobdc_view.component.adapter.i18n import catalog_for_namespace
         from ontobdc_view.component.adapter.source import theme_catalog
 
+        themes = theme_catalog()
         theme_catalog_json = self._escape_for_script_embedding(
-            json.dumps(theme_catalog(), ensure_ascii=False)
+            json.dumps(themes, ensure_ascii=False)
         )
+        # Same runtime the Surface embeds, on the same terms: this Page is a
+        # generated page too, so it normalizes its own address bar, applies
+        # the URL language before first paint, and hands its internal links
+        # (the back-link) the one helper that carries presentation state.
+        # Its defaults are this render's language and the first theme —
+        # only ever a fallback, since a link that opened this page already
+        # carries the state the user actually selected.
+        url_state_bootstrap = _url_state_bootstrap(
+            {
+                LANGUAGE_PARAM: language,
+                **(
+                    {THEME_PARAM: str(themes[0].get("name") or "")}
+                    if themes and isinstance(themes[0], dict) and themes[0].get("name")
+                    else {}
+                ),
+            }
+        )
+        # Each Page reads its own namespace, derived from the segment it
+        # already declares. Hardcoding "work_stream_view" gave every Page the
+        # WorkStream's strings — the schedule Page offered to "Reload 5W2H
+        # values from the WorkStream workbook". Unknown namespaces still fall
+        # back to "common", so a Page without its own block is not broken by
+        # this, only untranslated.
         i18n_json = self._escape_for_script_embedding(
-            json.dumps(catalog_for_namespace("work_stream_view"), ensure_ascii=False)
+            json.dumps(
+                catalog_for_namespace(f"{metadata.path_segment}_view"),
+                ensure_ascii=False,
+            )
         )
 
         workstream_payload = self._workstream_payload.build(
@@ -118,8 +202,25 @@ class EntityViewRenderAdapter(EntityViewRenderPort):
             else "null"
         )
 
+        # A schedule Page only gets its runtime when it can name the dataset
+        # folder to connect to; without one there is no workbook to read and
+        # the Page stays the build-time render it always was.
+        gantt_payload = (
+            self._gantt_payload.build(entity_data, entity_id, identifier)
+            if _IFC_WORK_SCHEDULE_TYPE_URI in entity_type_uris
+            else None
+        )
+        gantt_payload_json = (
+            self._escape_for_script_embedding(
+                json.dumps(gantt_payload, ensure_ascii=False)
+            )
+            if gantt_payload
+            else "null"
+        )
+        has_gantt_payload = gantt_payload is not None
         html = Template(template_text).render(
             language=language,
+            url_state_bootstrap=url_state_bootstrap,
             page_title=metadata.name,
             entity_id=entity_id,
             identifier=identifier,
@@ -134,6 +235,9 @@ class EntityViewRenderAdapter(EntityViewRenderPort):
             workstream_payload_json=workstream_payload_json,
             has_workstream_payload=workstream_payload is not None,
             workstream_script_names=_WORKSTREAM_SCRIPT_NAMES,
+            has_gantt_payload=has_gantt_payload,
+            gantt_script_names=_GANTT_SCRIPT_NAMES,
+            gantt_payload_json=gantt_payload_json,
         )
 
         return {

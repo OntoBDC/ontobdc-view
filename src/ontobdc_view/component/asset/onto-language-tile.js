@@ -1,6 +1,52 @@
 const LANGUAGES = __ONTOBDC_BUILD_LANGUAGES__;
 const I18N = __ONTOBDC_BUILD_I18N__;
 
+// The selected language lives in the URL and nowhere else — no cookie, no
+// storage. Every generated page embeds `window.ontobdcUrlState` (see
+// `embed_url_state_bootstrap`), which owns reading, changing and propagating
+// the canonical presentation parameters; this Tile only names the one it
+// drives. On a document without that runtime the Tile degrades to applying
+// the language in-page, exactly as it behaved before.
+const LANGUAGE_PARAM = "lang";
+
+const urlState = () => window.ontobdcUrlState ?? null;
+
+/**
+ * Write `name=value` into the URL and navigate, so page initialization
+ * re-derives the selection from the address bar.
+ *
+ * Prefers the page's URL-state runtime, which owns every canonical
+ * parameter and keeps internal links consistent with it. Its absence must
+ * never silently turn this control into a no-op, though: this package and
+ * the one that embeds that runtime version independently, and a page built
+ * before it existed still has to persist a selection it can reload into.
+ * Falling back to the same write-and-navigate keeps the control honest —
+ * degrading to "repaints the page, forgets on reload" is precisely the bug
+ * this Tile exists to not have.
+ */
+function selectUrlParam(name, value) {
+  if (value === null || value === undefined || value === "") return;
+
+  const state = window.ontobdcUrlState;
+  if (state && typeof state.select === "function") {
+    state.select(name, value);
+    return;
+  }
+
+  try {
+    const url = new URL(location.href);
+    url.searchParams.set(name, value);
+    // Already the active URL: navigating would only cost a reload.
+    if (url.href === location.href) return;
+    // assign(), not replace(): the change stays undoable with Back.
+    location.assign(url.href);
+  } catch {
+    // Navigation refused (sandboxed frame, exotic scheme). The selection is
+    // already applied to this document, so the control still works for this
+    // session — it just will not survive the next reload.
+  }
+}
+
 function t(key, vars) {
   const locale = document.documentElement.lang || document.documentElement.dataset.language || "en";
   const table = I18N[locale] || I18N.en || {};
@@ -81,7 +127,13 @@ class OntoLanguageTile extends HTMLElement {
   }
 
   connectedCallback() {
-    const current = document.documentElement.lang || document.documentElement.dataset.language;
+    // The URL wins: the bootstrap has already mirrored it onto
+    // `documentElement`, and on a page without the bootstrap the parameter is
+    // still the state a reload or a shared link will reproduce.
+    const current = urlState()?.value(LANGUAGE_PARAM)
+      ?? new URLSearchParams(location.search).get(LANGUAGE_PARAM)
+      ?? document.documentElement.lang
+      ?? document.documentElement.dataset.language;
     const foundIndex = LANGUAGES.findIndex(language => language.code === current);
     this.#languageIndex = foundIndex >= 0 ? foundIndex : 0;
     this.#applyLanguage(LANGUAGES[this.#languageIndex], false);
@@ -104,12 +156,26 @@ class OntoLanguageTile extends HTMLElement {
     if (index < 0) return;
     this.#languageIndex = index;
     this.#applyLanguage(LANGUAGES[index], true);
+    this.#persistLanguageInUrl(LANGUAGES[index]);
   }
 
   nextLanguage() {
     if (!LANGUAGES.length) return;
     this.#languageIndex = (this.#languageIndex + 1) % LANGUAGES.length;
     this.#applyLanguage(LANGUAGES[this.#languageIndex], true);
+    this.#persistLanguageInUrl(LANGUAGES[this.#languageIndex]);
+  }
+
+  // Hand the change to the page's URL-state runtime, which writes the
+  // parameter and navigates; initialization then re-derives the language
+  // from the address bar, so a later reload keeps it. #applyLanguage has
+  // already re-rendered this document, so the incoming one is identical and
+  // the navigation is invisible. Never called from connectedCallback:
+  // initialization reads the URL, it does not rewrite it, so there is no
+  // navigation loop.
+  #persistLanguageInUrl(language) {
+    if (!language?.code) return;
+    selectUrlParam(LANGUAGE_PARAM, language.code);
   }
 
   #onLanguageChanged = (event) => {

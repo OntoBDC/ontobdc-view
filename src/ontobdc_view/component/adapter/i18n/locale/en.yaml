@@ -52,7 +52,7 @@ data_container_tile:
   fallbackLabel: "Container"
 
 file_size_tile:
-  title: "STORAGE"
+  title: "Storage"
 
 presentation_surface:
   ariaLabel: "Presentation Surface"
@@ -174,3 +174,29 @@ annotation:
     multiple-points: "Multiple points"
     bounding-box: "Bounding box"
     clear: "Clear geometry"
+
+ifc_work_schedule_view:
+  backToSurface: "Back to Surface"
+  breadcrumbSurface: "Surface"
+  connectFolder: "Connect folder"
+  connectFolderTitle: "Connect this container's folder to read the schedule from its own workbook"
+  connectedFolder: "Connected folder"
+  reconnectFolder: "Reconnect folder"
+  refreshFromWorkbook: "Refresh"
+  refreshFromWorkbookTitle: "Reload tasks, dates and dependencies directly from the schedule workbook"
+  requestingAccess: "Requesting access..."
+  allowFolderAccess: "Allow access to the container folder to continue."
+  browserFileSystemAccessUnavailable: "This browser cannot open a local folder. Use a Chromium-based browser."
+  datapackageJsonNotFound: "datapackage.json was not found in the selected folder."
+  noDatasetSelectedFolder: "The selected folder is not this schedule's dataset."
+  multipleDatasetsSelectedFolder: "The selected folder holds more than one dataset. Pick the schedule's own folder."
+  noScheduleContext: "No IfcWorkSchedule context is available on this page."
+  ganttFilterTitle: "Gantt filter"
+  openGanttFilter: "Filter Gantt"
+  ganttFilterStartDate: "Start date"
+  ganttFilterEndDate: "End date"
+  ganttFilterCriticalPath: "Critical path"
+  ganttFilterReset: "Reset"
+  ganttFilterApply: "Apply"
+  ganttFilterClose: "Close"
+  ganttFilterInvalidRange: "Start date must be before end date."

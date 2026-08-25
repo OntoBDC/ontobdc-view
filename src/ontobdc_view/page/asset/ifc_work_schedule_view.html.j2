@@ -1,0 +1,486 @@
+<!doctype html>
+<html lang="{{ language }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{ page_title }}</title>
+{% if has_gantt_payload %}<script id="ontobdc-early-error-capture">
+(function () {
+  var queue = window.__ontobdcEarlyProtocolFailures = window.__ontobdcEarlyProtocolFailures || [];
+  function looksLikeFailure(s) {
+    if (!s) return false;
+    var t = String(s).toLowerCase();
+    return (
+      t.indexOf("cors policy") !== -1 ||
+      t.indexOf("origin 'null'") !== -1 ||
+      t.indexOf("origin null") !== -1 ||
+      t.indexOf("failed to fetch") !== -1 ||
+      t.indexOf("failed to fetch dynamically imported module") !== -1 ||
+      t.indexOf("net::err_failed") !== -1 ||
+      t.indexOf("net::err_file_not_found") !== -1 ||
+      t.indexOf("access to fetch at 'file:") !== -1 ||
+      t.indexOf("access to script at 'file:") !== -1 ||
+      t.indexOf("protocol file://") !== -1 ||
+      t.indexOf("cross origin requests are only supported") !== -1 ||
+      t.indexOf("from origin 'null'") !== -1
+    );
+  }
+  function collect(msg, ctx) {
+    try { queue.push({ at: new Date().toISOString(), message: String(msg || ""), context: String(ctx || "") }); } catch (e) {}
+  }
+  window.addEventListener("error", function (ev) {
+    var m = "";
+    try { m = ev && ev.message ? ev.message : ""; } catch (e) {}
+    if (!m) try { if (ev && ev.error) m = ev.error.message ? ev.error.message : String(ev.error); } catch (e) {}
+    if (looksLikeFailure(m)) collect(m, "error");
+  }, true);
+  window.addEventListener("unhandledrejection", function (ev) {
+    var m = "";
+    try {
+      if (typeof ev.reason === "string") m = ev.reason;
+      else if (ev.reason && ev.reason.message) m = ev.reason.message;
+      else m = String(ev.reason || "");
+    } catch (e) {}
+    if (looksLikeFailure(m)) collect(m, "unhandledrejection");
+  }, true);
+})();
+</script>{% endif %}
+{{ url_state_bootstrap | safe }}
+<script>
+  (() => {
+    const themes = {{ theme_catalog_json | safe }};
+    const params = new URLSearchParams(location.search);
+    const language = window.ontobdcUrlState?.value("lang") ?? params.get("lang");
+    if (language) {
+      document.documentElement.lang = language;
+      document.documentElement.dataset.language = language;
+    }
+    const requested = window.ontobdcUrlState?.value("theme") ?? params.get("theme");
+    const theme = themes.find((candidate) => candidate.name === requested) ?? themes[0];
+    if (!theme) return;
+    document.documentElement.dataset.theme = theme.name;
+    document.documentElement.style.colorScheme = theme.name === "dark" ? "dark" : "light";
+    for (const [key, value] of Object.entries(theme.tokens ?? {})) {
+      document.documentElement.style.setProperty(`--onto-theme-${key}`, value);
+    }
+    document.addEventListener("DOMContentLoaded", () => {
+      const backLink = document.querySelector(".back-link");
+      if (!backLink) return;
+      backLink.href = decorateInternalUrl(backLink.getAttribute("href"));
+    });
+
+    function decorateInternalUrl(href) {
+      const state = window.ontobdcUrlState;
+      if (state && typeof state.decorate === "function") return state.decorate(href);
+      const applied = {
+        lang: () => document.documentElement.lang || document.documentElement.dataset.language || "",
+        theme: () => document.documentElement.dataset.theme || "",
+      };
+      try {
+        const target = new URL(href, location.href);
+        const current = new URLSearchParams(location.search);
+        for (const name of ["lang", "theme"]) {
+          if (target.searchParams.has(name)) continue;
+          const carried = current.get(name) || applied[name]();
+          if (carried) target.searchParams.set(name, carried);
+        }
+        return target.href;
+      } catch {
+        return href;
+      }
+    }
+  })();
+</script>
+<style>
+{{ annotation_runtime_css }}
+{{ css_content }}
+
+.gantt-filter-dialog {
+  border: 1px solid color-mix(in srgb, var(--onto-theme-foreground, #111827) 18%, transparent);
+  border-radius: 14px;
+  padding: 0;
+  min-width: min(420px, calc(100vw - 32px));
+  background: var(--onto-theme-background, #fff);
+  color: var(--onto-theme-foreground, #111827);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, .28);
+  color-scheme: inherit;
+}
+.gantt-filter-dialog::backdrop { background: rgba(0,0,0,.38); }
+.gantt-filter-form { display: grid; gap: 18px; padding: 20px; }
+.gantt-filter-heading { display:flex; align-items:center; justify-content:space-between; gap:16px; }
+.gantt-filter-heading h2 { margin:0; font-size:18px; }
+.gantt-filter-close { font-size:22px; line-height:1; }
+.gantt-filter-field { display:grid; gap:7px; font-size:13px; font-weight:600; }
+.gantt-filter-field input[type="date"] {
+  width:100%; box-sizing:border-box; padding:9px 10px; border-radius:8px;
+  border:1px solid color-mix(in srgb, var(--onto-theme-foreground, #111827) 22%, transparent);
+  background:var(--onto-theme-background, #fff); color:var(--onto-theme-foreground, #111827);
+  color-scheme: inherit;
+}
+.gantt-filter-toggle-row { display:flex; align-items:center; justify-content:space-between; gap:16px; font-size:13px; font-weight:600; cursor:pointer; }
+.gantt-filter-toggle { position:relative; display:inline-flex; }
+.gantt-filter-toggle input { position:absolute; opacity:0; pointer-events:none; }
+.gantt-filter-toggle-track { width:42px; height:24px; border-radius:999px; background:color-mix(in srgb, var(--onto-theme-foreground, #111827) 24%, transparent); padding:2px; box-sizing:border-box; transition:.18s ease; }
+.gantt-filter-toggle-thumb { display:block; width:20px; height:20px; border-radius:50%; background:var(--onto-theme-background, #fff); box-shadow:0 1px 4px rgba(0,0,0,.28); transition:.18s ease; }
+.gantt-filter-toggle input:checked + .gantt-filter-toggle-track { background:var(--onto-theme-accent, #2563eb); }
+.gantt-filter-toggle input:checked + .gantt-filter-toggle-track .gantt-filter-toggle-thumb { transform:translateX(18px); }
+.gantt-filter-actions { display:flex; justify-content:flex-end; gap:10px; margin-top:2px; }
+.gantt-filter-actions button { padding:8px 14px; border-radius:8px; cursor:pointer; }
+.gantt-filter-reset { background:transparent; color:inherit; border:1px solid color-mix(in srgb, var(--onto-theme-foreground, #111827) 22%, transparent); }
+.gantt-filter-apply { border:0; background:var(--onto-theme-accent, #2563eb); color:#fff; }
+.gantt-filter-btn[data-filter-active="true"] { outline:2px solid var(--onto-theme-accent, #2563eb); outline-offset:2px; }
+</style>
+</head>
+<body>
+<script type="application/ld+json" id="ontobdc-page-jsonld">{{ entity_json }}</script>
+<script type="application/json" id="ontobdc-i18n">{{ i18n_json | safe }}</script>
+{% if has_gantt_payload %}
+<script>window.infoBimIfcWorkScheduleView = {{ gantt_payload_json | safe }};</script>
+{% endif %}
+<main class="onto-page" data-ontobdc-resource="{{ entity_id }}">
+  <header class="onto-page-header">
+    <a class="icon-btn back-link" href="../../../index.html" data-i18n-title="backToSurface" data-i18n-aria-label="backToSurface">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+    </a>
+    <div class="breadcrumb"><span class="breadcrumb-crumb" data-i18n="breadcrumbSurface"></span><span class="breadcrumb-sep">/</span><span class="breadcrumb-crumb is-current">IfcWorkScheduleGantt</span></div>
+    <div class="header-actions">
+      <span class="connection-status" data-status="idle" role="status" aria-hidden="true"></span>
+      <button type="button" class="connect-btn" data-i18n="connectFolder" data-i18n-title="connectFolderTitle" data-i18n-aria-label="connectFolder"></button>
+      <button type="button" class="refresh-btn" disabled data-i18n="refreshFromWorkbook" data-i18n-title="refreshFromWorkbookTitle" data-i18n-aria-label="refreshFromWorkbook"></button>
+      <button type="button" class="icon-btn workspace-btn" disabled style="display:none" aria-hidden="true" data-i18n-title="openAnnotationWorkspace" data-i18n-aria-label="openAnnotationWorkspace">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/></svg>
+      </button>
+      <button type="button" class="icon-btn gantt-filter-btn" data-i18n-title="openGanttFilter" data-i18n-aria-label="openGanttFilter">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+      </button>
+    </div>
+  </header>
+  <section class="tile onto-page-body">
+    <div class="body"><div class="name"></div><div class="identifier"></div></div>
+    <div class="fields"></div>
+    <div class="gantt-container">
+      <div class="gantt-left"><table class="gantt-table"><thead><tr><th>WBS</th><th>Task Name</th><th>Start</th><th>Finish</th><th>Duration</th><th>%</th></tr></thead><tbody id="gantt-tbody"></tbody></table></div>
+      <div class="gantt-right"><div class="gantt-timeline-header" id="gantt-timeline-header"></div><svg class="gantt-svg" id="gantt-svg"><defs><marker id="arrowhead" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><polygon points="0 0, 10 3, 0 6" fill="#000"/></marker></defs></svg></div>
+    </div>
+  </section>
+  <div class="dimension-cards"></div>
+</main>
+
+<dialog class="gantt-filter-dialog" id="gantt-filter-dialog" aria-labelledby="gantt-filter-title">
+  <form method="dialog" class="gantt-filter-form" id="gantt-filter-form">
+    <div class="gantt-filter-heading"><h2 id="gantt-filter-title" data-i18n="ganttFilterTitle"></h2><button type="button" class="icon-btn gantt-filter-close" data-i18n-title="ganttFilterClose" data-i18n-aria-label="ganttFilterClose">×</button></div>
+    <label class="gantt-filter-field"><span data-i18n="ganttFilterStartDate"></span><input type="date" id="gantt-filter-start"></label>
+    <label class="gantt-filter-field"><span data-i18n="ganttFilterEndDate"></span><input type="date" id="gantt-filter-end"></label>
+    <label class="gantt-filter-toggle-row" for="gantt-filter-critical"><span data-i18n="ganttFilterCriticalPath"></span><span class="gantt-filter-toggle"><input type="checkbox" id="gantt-filter-critical"><span class="gantt-filter-toggle-track" aria-hidden="true"><span class="gantt-filter-toggle-thumb"></span></span></span></label>
+    <div class="gantt-filter-actions"><button type="button" class="gantt-filter-reset" data-i18n="ganttFilterReset"></button><button type="submit" class="gantt-filter-apply" data-i18n="ganttFilterApply"></button></div>
+  </form>
+</dialog>
+
+<script>{{ workstream_context_js }}</script>
+<script>{{ annotation_runtime_js }}</script>
+{% if js_content %}<script>{{ js_content }}</script>{% endif %}
+{% if has_gantt_payload %}
+<script id="ontobdc-gantt-loader">
+(function () {
+  if (!window.__ontobdcGanttLoader) {
+    window.__ontobdcGanttLoader = {};
+  }
+  var SCRIPT_NAMES = {{ gantt_script_names | list | tojson }};
+  var PYODIDE_JS_PATH = "ifc_work_schedule_view/pyodide/v0.27.2/full/pyodide.js";
+  var ASSET_SCRIPT_PREFIX = "ifc_work_schedule_view/";
+
+  function findAssetBase() {
+    var here = location.href;
+    var cut = here.indexOf("#");
+    if (cut !== -1) here = here.substring(0, cut);
+    cut = here.indexOf("?");
+    if (cut !== -1) here = here.substring(0, cut);
+    var parts = here.split("/");
+    while (parts.length > 0) {
+      parts.pop();
+      var candidate = parts.join("/");
+      if (!candidate) continue;
+      try {
+        var testTail = candidate.split("/").pop();
+        if (testTail === ".__ontobdc__") {
+          return candidate + "/asset/";
+        }
+      } catch (e) {}
+    }
+    var up = parts.slice(0, -1).join("/") || location.origin;
+    return (up || location.origin) + "/asset/";
+  }
+
+  var base = findAssetBase();
+  window.__ONTOBDC_ASSET_BASE_URL__ = base;
+  window.__ontobdcGanttLoader.assetBase = base;
+  var failed = [];
+  var loaded = 0;
+  var __ontobdcCacheBust = "v=20260823";
+  var expected = SCRIPT_NAMES.length;
+
+  var earlyFailures = Array.isArray(window.__ontobdcEarlyProtocolFailures) ? window.__ontobdcEarlyProtocolFailures.slice() : [];
+  if (earlyFailures.length > 0) {
+    try {
+      window.setTimeout(function () {
+        var first = earlyFailures[0] || {};
+        var msg = first.message || first.context || "Unknown protocol failure";
+        if (typeof showRuntimeProtocolBanner === "function") {
+          showRuntimeProtocolBanner(msg);
+        } else {
+          showError();
+        }
+      }, 0);
+    } catch (e) { /* noop */ }
+  }
+  var banner = null;
+
+  function ensureBanner() {
+    if (banner) return banner;
+    banner = document.createElement("div");
+    banner.setAttribute("role", "alert");
+    banner.setAttribute("aria-live", "assertive");
+    var bg = document.documentElement.dataset.theme === "dark" ? "#450a0a" : "#fef2f2";
+    var fg = document.documentElement.dataset.theme === "dark" ? "#fecaca" : "#7f1d1d";
+    var bd = document.documentElement.dataset.theme === "dark" ? "#f87171" : "#dc2626";
+    banner.style.cssText =
+      "position:fixed;z-index:2147483647;top:12px;left:12px;right:12px;padding:16px 18px;border:1px solid " +
+      bd +
+      ";border-radius:12px;background:" +
+      bg +
+      ";color:" +
+      fg +
+      ";font:700 13px ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;letter-spacing:.01em;box-shadow:0 18px 40px rgba(0,0,0,.5);text-align:left;";
+    banner.id = "ontobdc-gantt-loader-errors";
+    document.documentElement.appendChild(banner);
+    return banner;
+  }
+
+  function showError() {
+    if (failed.length === 0) return;
+    var box = ensureBanner();
+    var title = document.createElement("div");
+    title.textContent = "Failed to load Gantt runtime scripts (" + failed.length + "/" + expected + ").";
+    title.style.cssText = "margin:0 0 8px 0;font-size:14px;font-weight:900;text-transform:uppercase;letter-spacing:.04em;";
+    var help = document.createElement("div");
+    help.textContent = "Asset folder auto-detected at: " + base;
+    help.style.cssText = "margin:0 0 10px 0;font-weight:600;opacity:.85;";
+    var ul = document.createElement("ul");
+    ul.style.cssText = "margin:0;padding-left:1.25rem;display:grid;gap:4px;";
+    failed.forEach(function (item) {
+      var li = document.createElement("li");
+      li.textContent = item.name + " -> " + item.url;
+      li.style.cssText = "word-break:break-all;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;font-weight:600;opacity:.95;";
+      ul.appendChild(li);
+    });
+    var tip = document.createElement("div");
+    tip.textContent =
+      "Open this page via HTTP (python -m http.server 8765) instead of double-clicking the HTML file. Protocol file:// blocks some runtime modules even when paths are correct.";
+    tip.style.cssText = "margin-top:12px;padding-top:12px;border-top:1px dashed rgba(220,38,38,.55);font-size:11.5px;font-weight:600;opacity:.9;";
+    box.innerHTML = "";
+    box.appendChild(title);
+    box.appendChild(help);
+    box.appendChild(ul);
+    box.appendChild(tip);
+  }
+
+  function loadOne(kind, name, suffix, index) {
+    var s = document.createElement("script");
+    s.defer = true;
+    var rel = kind === "pyodide" ? PYODIDE_JS_PATH : ASSET_SCRIPT_PREFIX + name + suffix;
+    var url = base + rel;
+    if (kind !== "pyodide") {
+      url += (url.indexOf("?") === -1 ? "?" : "&") + __ontobdcCacheBust;
+    }
+    s.src = url;
+    s.setAttribute("data-ontobdc-script-kind", kind);
+    s.setAttribute("data-ontobdc-order", String(index));
+    function onFail() {
+      failed.push({ kind: kind, name: name, url: url });
+      loaded += 1;
+      showError();
+    }
+    function onOk() {
+      loaded += 1;
+      if (loaded >= expected) window.dispatchEvent(new CustomEvent("ontobdc:gantt-scripts-ready", { detail: { assetBase: base } }));
+    }
+    s.addEventListener("error", onFail);
+    s.addEventListener("load", onOk);
+    (document.head || document.documentElement).appendChild(s);
+  }
+
+  loadOne("builder", SCRIPT_NAMES[0], ".js", 0);
+  SCRIPT_NAMES.slice(1).forEach(function (name, i) {
+    loadOne("builder", name, ".js", i + 1);
+  });
+
+  function looksLikeFileProtocolFailure(msg) {
+    if (!msg) return false;
+    var s = String(msg).toLowerCase();
+    return (
+      s.indexOf("cors policy") !== -1 ||
+      s.indexOf("origin 'null'") !== -1 ||
+      s.indexOf("origin null") !== -1 ||
+      (s.indexOf("failed to fetch") !== -1) ||
+      (s.indexOf("failed to fetch dynamically imported module") !== -1) ||
+      (s.indexOf("net::err_failed") !== -1) ||
+      (s.indexOf("net::err_file_not_found") !== -1) ||
+      (s.indexOf("access to fetch at 'file:") !== -1) ||
+      (s.indexOf("access to script at 'file:") !== -1) ||
+      (s.indexOf("protocol file://") !== -1)
+    );
+  }
+  var runtimeBannerShown = false;
+  function showRuntimeProtocolBanner(firstMsg) {
+    if (runtimeBannerShown) return;
+    runtimeBannerShown = true;
+    var box = ensureBanner();
+    var title = document.createElement("div");
+    title.textContent = "Gantt runtime blocked by browser protocol restrictions.";
+    title.style.cssText = "margin:0 0 8px 0;font-size:14px;font-weight:900;text-transform:uppercase;letter-spacing:.04em;";
+    var help = document.createElement("div");
+    help.textContent = "Asset folder auto-detected at: " + base;
+    help.style.cssText = "margin:0 0 10px 0;font-weight:600;opacity:.85;";
+    var why = document.createElement("div");
+    why.textContent = "First error detected: " + (firstMsg || "(unknown)");
+    why.style.cssText = "margin:0 0 10px 0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;font-weight:600;word-break:break-all;";
+    var tip = document.createElement("div");
+    tip.textContent = "Open this page via HTTP (cd repo_root; python -m http.server 8765 --bind 127.0.0.1) then open http://127.0.0.1:8765/... in the browser. Protocol file:// is an opaque origin that blocks fetch(), dynamic import() and cross-file XHR — this is a browser security rule, not a bug in the page. Pyodide WASM modules and workbook datapackage reads require HTTP to work.";
+    tip.style.cssText = "margin-top:12px;padding-top:12px;border-top:1px dashed rgba(220,38,38,.55);font-size:11.5px;font-weight:600;opacity:.9;line-height:1.45;";
+    box.innerHTML = "";
+    box.appendChild(title);
+    box.appendChild(help);
+    box.appendChild(why);
+    box.appendChild(tip);
+  }
+  window.addEventListener("unhandledrejection", function (ev) {
+    var msg = "";
+    try { if (ev.reason && ev.reason.message) msg = ev.reason.message; else if (typeof ev.reason === "string") msg = ev.reason; } catch (e) {}
+    if (!msg) try { msg = String(ev.reason || ""); } catch (e) {}
+    if (looksLikeFileProtocolFailure(msg)) showRuntimeProtocolBanner(msg);
+  }, true);
+  window.addEventListener("error", function (ev) {
+    var msg = "";
+    try { if (ev.message) msg = ev.message; else if (typeof ev.error === "string") msg = ev.error; else if (ev.error && ev.error.message) msg = ev.error.message; } catch (e) {}
+    if (looksLikeFileProtocolFailure(msg)) showRuntimeProtocolBanner(msg);
+  }, true);
+
+  setTimeout(function () {
+    if (loaded < expected && failed.length > 0) showError();
+  }, 12000);
+})();
+</script>
+{% endif %}
+<script>
+window.addEventListener("load", function () {
+  const rt = window.OntoBDCGanttViewRuntime;
+  const dialog = document.getElementById("gantt-filter-dialog");
+  const form = document.getElementById("gantt-filter-form");
+  const startInput = document.getElementById("gantt-filter-start");
+  const endInput = document.getElementById("gantt-filter-end");
+  const criticalInput = document.getElementById("gantt-filter-critical");
+  const openBtn = document.querySelector(".gantt-filter-btn");
+  const closeBtn = document.querySelector(".gantt-filter-close");
+  const resetBtn = document.querySelector(".gantt-filter-reset");
+  if (!rt || !dialog || !form || !openBtn || typeof rt.runRender !== "function") return;
+
+  const originalRunRender = rt.runRender.bind(rt);
+  const originalRunParse = typeof rt.runParse === "function" ? rt.runParse.bind(rt) : null;
+  const filter = rt.state.ganttFilter = {
+    start: null,
+    end: null,
+    showCritical: false,
+    sourceTasks: Array.isArray(rt.state.enrichedTasks) ? rt.state.enrichedTasks : [],
+    renderedTasks: null
+  };
+
+  function dayStart(value) {
+    if (!value) return null;
+    const parts = String(value).split("-").map(Number);
+    if (parts.length !== 3 || parts.some(Number.isNaN)) return null;
+    return new Date(parts[0], parts[1] - 1, parts[2]);
+  }
+  function dayEnd(value) {
+    const d = dayStart(value);
+    if (!d) return null;
+    d.setHours(23, 59, 59, 999);
+    return d;
+  }
+  function clippedTask(task) {
+    const sourceStart = task.scheduleStart;
+    const sourceFinish = task.scheduleFinish || task.scheduleStart;
+    if (!sourceStart && !sourceFinish) return task;
+    if (filter.start && sourceFinish && sourceFinish < filter.start) return null;
+    if (filter.end && sourceStart && sourceStart > filter.end) return null;
+    const start = filter.start && sourceStart && sourceStart < filter.start ? new Date(filter.start) : sourceStart;
+    const finish = filter.end && sourceFinish && sourceFinish > filter.end ? new Date(filter.end) : sourceFinish;
+    const clone = Object.assign({}, task, {
+      scheduleStart: start,
+      scheduleFinish: finish,
+      isCritical: filter.showCritical ? task.isCritical : false
+    });
+    if (start && finish) clone.duration_days = Math.max(0.25, (finish.getTime() - start.getTime()) / rt.MILLIS_PER_DAY + 1);
+    return clone;
+  }
+  function renderFiltered() {
+    const current = Array.isArray(rt.state.enrichedTasks) ? rt.state.enrichedTasks : [];
+    if (current !== filter.renderedTasks) filter.sourceTasks = current;
+    const visible = filter.sourceTasks.map(clippedTask).filter(Boolean);
+    filter.renderedTasks = visible;
+    rt.state.enrichedTasks = visible;
+    const schedule = rt.state.schedule;
+    rt.state.schedule = null;
+    originalRunRender();
+    rt.state.schedule = schedule;
+    if (typeof rt.runArrows === "function") rt.runArrows();
+    openBtn.dataset.filterActive = String(Boolean(filter.start || filter.end || !filter.showCritical));
+  }
+  if (originalRunParse) {
+    rt.runParse = function () {
+      originalRunParse();
+      filter.sourceTasks = Array.isArray(rt.state.enrichedTasks) ? rt.state.enrichedTasks : [];
+      filter.renderedTasks = null;
+    };
+  }
+  rt.runRender = renderFiltered;
+
+  openBtn.addEventListener("click", function () {
+    startInput.value = filter.start ? rt.formatDate(filter.start) : "";
+    endInput.value = filter.end ? rt.formatDate(filter.end) : "";
+    criticalInput.checked = filter.showCritical;
+    dialog.showModal();
+  });
+  closeBtn.addEventListener("click", function () { dialog.close(); });
+  dialog.addEventListener("click", function (event) { if (event.target === dialog) dialog.close(); });
+  form.addEventListener("submit", function (event) {
+    event.preventDefault();
+    const start = dayStart(startInput.value);
+    const end = dayEnd(endInput.value);
+    if (start && end && start > end) {
+      startInput.setCustomValidity(rt.t("ganttFilterInvalidRange"));
+      startInput.reportValidity();
+      return;
+    }
+    startInput.setCustomValidity("");
+    filter.start = start;
+    filter.end = end;
+    filter.showCritical = criticalInput.checked;
+    dialog.close();
+    renderFiltered();
+  });
+  resetBtn.addEventListener("click", function () {
+    startInput.value = "";
+    endInput.value = "";
+    criticalInput.checked = false;
+    filter.start = null;
+    filter.end = null;
+    filter.showCritical = false;
+    dialog.close();
+    renderFiltered();
+  });
+
+  renderFiltered();
+});
+</script>
+</body>
+</html>

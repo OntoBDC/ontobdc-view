@@ -33,6 +33,7 @@ class OntoFileSizeTile extends HTMLElement {
         }
         *, *::before, *::after { box-sizing: border-box; }
         .tile {
+          position: relative;
           inline-size: 100%;
           block-size: 100%;
           min-inline-size: 0;
@@ -51,7 +52,35 @@ class OntoFileSizeTile extends HTMLElement {
           color: var(--onto-theme-foreground, #0f172a);
           white-space: nowrap;
         }
+        .stack {
+          /* Label, value and unit in one column that the .tile centers as a
+             whole. Start-aligning inside it is what makes the unit begin at
+             the same x as the label — the two share the column's left edge
+             by construction, at any tile width and in any language, instead
+             of depending on free space in a row. */
+          display: flex;
+          flex-direction: column;
+          align-items: flex-start;
+          gap: clamp(2px, 4cqh, 6px);
+          min-inline-size: 0;
+          max-inline-size: 100%;
+        }
         .label {
+          /* The tile sets nowrap for the number and unit, which must never
+             break. The label is the one part that can, and it has to be
+             allowed to: it is the only translated string here, word length
+             varies a lot between languages, and the shipped tile is 72px
+             wide — a label that cannot wrap gets clipped by the tile's own
+             overflow:hidden. The start-aligned column means a wrapped line
+             still begins at the same x as the unit. */
+          white-space: normal;
+          /* break-word, not anywhere: the anywhere value also lets the
+             label's min-content size collapse to one character, so the flex
+             column shrank it below the width it actually needed and TAMANHO
+             wrapped with 1.9px still to spare. break-word keeps the
+             intrinsic width and only breaks a word that truly overflows. */
+          overflow-wrap: break-word;
+          text-wrap: balance;
           font-size: clamp(9px, 2.2cqw, 11px);
           font-weight: 700;
           letter-spacing: .12em;
@@ -59,23 +88,15 @@ class OntoFileSizeTile extends HTMLElement {
           color: color-mix(in srgb, var(--onto-theme-foreground, #0f172a) 60%, transparent);
         }
         .value {
+          /* Stays optically centered over the column, as before — the issue
+             is about the unit's left edge, not the number's. */
+          align-self: center;
           min-inline-size: 0;
           font-size: clamp(15px, 30cqw, 30px);
           line-height: 1;
           font-weight: 800;
           letter-spacing: -0.04em;
           text-align: center;
-        }
-        .amount {
-          /* The only row that stretches full-width — .label/.value stay
-             centered above it via the .tile's own align-items: center. */
-          align-self: stretch;
-          inline-size: 100%;
-          display: flex;
-          flex-direction: row;
-          align-items: center;
-          justify-content: space-between;
-          gap: clamp(4px, 1.8cqh, 10px);
         }
         .unit {
           flex: none;
@@ -87,9 +108,16 @@ class OntoFileSizeTile extends HTMLElement {
           text-align: start;
         }
         .close-btn {
+          /* Out of flow, pinned to the tile's corner. In flow it was a
+             sibling of the unit with an auto inline-start margin, and that
+             margin absorbed every pixel of free space — which silently
+             overrode the row's centering and shoved the unit hard against
+             the left edge. */
           all: unset;
+          position: absolute;
+          inset-block-end: clamp(5px, 8cqw, 9px);
+          inset-inline-end: clamp(5px, 8cqw, 9px);
           cursor: pointer;
-          flex: none;
           inline-size: clamp(18px, 5cqh, 24px);
           block-size: clamp(18px, 5cqh, 24px);
           border-radius: 999px;
@@ -119,14 +147,14 @@ class OntoFileSizeTile extends HTMLElement {
         }
       </style>
       <div class="tile" role="status" aria-label="Total file size">
-        <span class="label"></span>
-        <span class="value"></span>
-        <div class="amount">
+        <div class="stack">
+          <span class="label"></span>
+          <span class="value"></span>
           <span class="unit"></span>
-          <button type="button" class="close-btn" title="Close tile" aria-label="Close tile">
-            <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          </button>
         </div>
+        <button type="button" class="close-btn" title="Close tile" aria-label="Close tile">
+          <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
       </div>
     `;
   }
@@ -169,7 +197,7 @@ class OntoFileSizeTile extends HTMLElement {
   }
 
   #totalBytes() {
-    const property = "http://ontobdc.org/ontology/domain/ns.ttl#fileSize";
+    const property = "http://ontobdc.org/ontology/domain/ontobdc/ns.ttl#fileSize";
     let total = 0;
     let found = false;
     for (const node of this.#surfaceNodes()) {

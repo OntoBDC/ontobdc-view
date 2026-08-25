@@ -1,0 +1,270 @@
+/* Page chrome shared by every standalone Page: header, breadcrumb,
+ * back-link and the container-connection buttons are the same
+ * furniture whichever entity a Page shows. Moved out of
+ * work_stream_view.css, the only Page that had them — the
+ * IfcWorkSchedule Page used the very same class names and rendered
+ * them unstyled. Inlined before each Page's own stylesheet, so a Page
+ * can still override any of it. */
+
+/* Document-level reset. This lived in work_stream_view.css and stayed
+ * behind when the chrome moved out — so the IfcWorkSchedule Page had no
+ * canvas background, no foreground colour, no font stack and the UA's
+ * default body margin: its Gantt block followed the theme while the page
+ * around it stayed white. Nothing here is specific to which entity a Page
+ * shows, so it belongs with the rest of the shared chrome. */
+
+:root {
+  color-scheme: light dark;
+}
+
+/* The theme catalog defines exactly four tokens — background, foreground,
+ * accent, borderColor — and the head bootstrap sets only those as inline
+ * custom properties on <html>. The chrome below is written against a
+ * wider, Material-ish vocabulary, and every one of those names was
+ * undefined: each `var()` silently fell through to the light-mode literal
+ * in its own fallback, which is why a dark Page still painted a white
+ * canvas. Deriving the vocabulary from the four real tokens here keeps
+ * those rules readable *and* makes them follow the theme; nothing below
+ * needs to know which of the two it is using. */
+:root {
+  --onto-theme-surface: var(--onto-theme-background, #ffffff);
+  --onto-theme-on-surface: var(--onto-theme-foreground, #0f172a);
+  --onto-theme-primary: var(--onto-theme-accent, #0284c7);
+  --onto-theme-surface-container: color-mix(in srgb,
+    var(--onto-theme-foreground, #0f172a) 4%, var(--onto-theme-background, #ffffff));
+  --onto-theme-surface-container-low: color-mix(in srgb,
+    var(--onto-theme-foreground, #0f172a) 3%, var(--onto-theme-background, #ffffff));
+  --onto-theme-outline-variant: color-mix(in srgb,
+    var(--onto-theme-foreground, #0f172a) 14%, transparent);
+  --onto-theme-primary-container: color-mix(in srgb,
+    var(--onto-theme-accent, #0284c7) 22%, var(--onto-theme-background, #ffffff));
+  --onto-theme-on-primary-container: var(--onto-theme-foreground, #0f172a);
+}
+
+* , *::before, *::after { box-sizing: border-box; }
+
+/* The browser's own [hidden] { display: none } UA rule has the same
+   specificity (0,1,0) as any single class selector, so any later class
+   rule that sets its own `display` (e.g. .icon-btn { display: inline-flex })
+   silently wins over `hidden` and leaves the element visible/clickable.
+   !important restores `hidden`'s intended meaning regardless of what else
+   targets the element. */
+[hidden] { display: none !important; }
+
+/*
+ * Standalone-Page canvas paint. A Page opened on its own URL (not nested
+ * inside the Surface parent that sets the theme background) must paint
+ * its own html/body/main using the onto-theme tokens so the user never
+ * sees a blank white canvas under a dark theme. Applied to html and body
+ * so the browser's viewport-level background (default #fff on most
+ * engines) is overridden before first paint. Tokens come from the
+ * head bootstrap script which sets `--onto-theme-*` custom props on
+ * `html` + `html.dataset.theme`.
+ */
+html, body {
+  margin: 0;
+  padding: 0;
+  background-color: var(--onto-theme-surface, #ffffff);
+  color: var(--onto-theme-on-surface, #0f172a);
+  min-block-size: 100%;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+main.onto-page {
+  background-color: var(--onto-theme-surface, #ffffff);
+  color: var(--onto-theme-on-surface, #0f172a);
+  min-block-size: 100vh;
+}
+
+body {
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.onto-page {
+  max-width: 1160px;
+  margin: 0 auto;
+  padding: clamp(16px, 4vw, 40px);
+  display: flex;
+  flex-direction: column;
+  gap: clamp(12px, 2vw, 20px);
+}
+
+.onto-page-body.tile {
+  background-color: var(--onto-theme-surface-container-low, color-mix(in srgb, var(--onto-theme-on-surface, #0f172a) 3%, transparent));
+  color: var(--onto-theme-on-surface, #0f172a);
+  border-radius: clamp(8px, 1.2vw, 14px);
+  padding: clamp(16px, 2.5vw, 28px);
+  box-shadow: 0 1px 2px color-mix(in srgb, #000 6%, transparent);
+}
+
+.onto-page-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background-color: var(--onto-theme-surface-container, color-mix(in srgb, var(--onto-theme-on-surface, #0f172a) 4%, transparent));
+  color: var(--onto-theme-on-surface, #0f172a);
+  border-bottom: 1px solid var(--onto-theme-outline-variant, color-mix(in srgb, var(--onto-theme-on-surface, #0f172a) 8%, transparent));
+  border-radius: clamp(8px, 1.2vw, 12px);
+  padding: clamp(8px, 1.5vw, 12px) clamp(12px, 2vw, 16px);
+}
+
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--onto-theme-foreground, #0f172a) 6%, transparent);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.breadcrumb-crumb {
+  color: color-mix(in srgb, var(--onto-theme-foreground, #0f172a) 45%, transparent);
+}
+
+.breadcrumb-crumb.is-current {
+  color: color-mix(in srgb, var(--onto-theme-foreground, #0f172a) 80%, transparent);
+}
+
+.breadcrumb-sep {
+  color: color-mix(in srgb, var(--onto-theme-foreground, #0f172a) 30%, transparent);
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.connect-btn {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 7px 14px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--onto-theme-accent, #0ea5e9) 45%, transparent);
+  background: transparent;
+  color: var(--onto-theme-accent, #0ea5e9);
+  cursor: pointer;
+}
+
+.connection-status {
+  inline-size: 9px;
+  block-size: 9px;
+  border-radius: 50%;
+  flex: none;
+  background: color-mix(in srgb, var(--onto-theme-foreground, #0f172a) 30%, transparent);
+  transition: background-color .2s ease;
+}
+
+.connection-status[data-status="connecting"] {
+  background: #f59e0b;
+  animation: onto-connection-pulse 1s ease-in-out infinite;
+}
+
+.connection-status[data-status="connected"] {
+  background: #22c55e;
+  animation: none;
+}
+
+.connection-status[data-status="error"] {
+  background: #ef4444;
+  animation: none;
+}
+
+@keyframes onto-connection-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .35; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .connection-status[data-status="connecting"] { animation: none; }
+}
+
+.connect-btn:disabled {
+  opacity: .6;
+  cursor: default;
+}
+
+.icon-btn:disabled {
+  opacity: .35;
+  cursor: default;
+  pointer-events: none;
+}
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 28px;
+  block-size: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--onto-theme-accent, #0ea5e9);
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.icon-btn:hover {
+  background: color-mix(in srgb, var(--onto-theme-foreground, #0f172a) 10%, transparent);
+}
+
+.icon-btn svg {
+  inline-size: 16px;
+  block-size: 16px;
+}
+
+/*
+ * Dark-theme overrides (live when the page bootstrap sets html.dataset.theme).
+ * Kept at the very bottom of this stylesheet on purpose: the light/base
+ * block above does not name any selector with `html[data-theme="dark"]`, so
+ * any selector of equal specificity in this block wins purely by source
+ * order. Specificity only bumps when we need to reach nested page parts.
+ */
+html[data-theme="dark"],
+html[data-theme="dark"] body {
+  background-color: var(--onto-theme-surface, #111214);
+  color: var(--onto-theme-on-surface, #e8eaed);
+}
+
+html[data-theme="dark"] main.onto-page {
+  background-color: var(--onto-theme-surface, #111214);
+  color: var(--onto-theme-on-surface, #e8eaed);
+}
+
+html[data-theme="dark"] .onto-page-header {
+  background-color: var(--onto-theme-surface-container, #1c1d20);
+  color: var(--onto-theme-on-surface, #e8eaed);
+  border-bottom-color: var(--onto-theme-outline-variant, #3c3f43);
+}
+
+html[data-theme="dark"] .onto-page-body.tile {
+  background-color: var(--onto-theme-surface-container-low, #16171a);
+  color: var(--onto-theme-on-surface, #e8eaed);
+  box-shadow: 0 1px 2px color-mix(in srgb, #000 40%, transparent);
+}
+
+html[data-theme="dark"] .onto-page-body.tile .gantt-table th,
+html[data-theme="dark"] .onto-page-body.tile .gantt-table td,
+html[data-theme="dark"] .onto-page-body.tile #gantt-timeline-header {
+  border-color: var(--onto-theme-outline-variant, #3c3f43);
+}
+
+html[data-theme="dark"] .onto-page-body.tile .gantt-table tbody tr:hover {
+  background-color: var(--onto-theme-surface-container, #1c1d20);
+}
+
+html[data-theme="dark"] .onto-page-body.tile #arrowhead polygon {
+  fill: var(--onto-theme-primary, #90caf9);
+}
+
+html[data-theme="dark"] .onto-page-body.tile .gantt-svg .gantt-arrow {
+  stroke: var(--onto-theme-primary, #90caf9);
+}

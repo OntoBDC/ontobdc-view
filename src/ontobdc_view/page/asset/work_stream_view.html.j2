@@ -5,20 +5,38 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{{ page_title }}</title>
 {% if has_workstream_payload %}
-<script defer src="https://cdn.jsdelivr.net/pyodide/v0.27.2/full/pyodide.js"></script>
+{# — Pyodide is loaded LAZILY only if SheetJS workbook parsing actually
+   fails. Loading it on page startup via <script src> causes 6+ spurious
+   "Access to fetch blocked" CORS warnings on file:// protocol because the
+   user opens the HTML with double-click and Pyodide immediately tries to
+   fetch() its WASM and lockfile assets.
+   If SheetJS is bundled (it always is via SCRIPT_NAMES[0] = xlsx-*.js) the
+   workbook is parsed 100% client-side with no extra network calls. #}
 {% endif %}
+{{ url_state_bootstrap | safe }}
 <script>
   // This Page is a separate document from the Surface it was opened from
-  // (onto-workstream-tile's "open" link), so the active theme doesn't carry
-  // over on its own — it's passed via ?theme= instead. Applied here, as an
-  // early classic (non-module, parser-blocking) script, so the correct
-  // theme is already active before first paint rather than flashing light
-  // then switching. Same token catalog onto-theme-tile itself builds with
-  // (ontobdc_view.component.adapter.component_source.theme_catalog), not a
-  // second hardcoded copy of the palette.
+  // (onto-workstream-tile's "open" link), so the active presentation state
+  // doesn't carry over on its own — it arrives in the URL, normalized and
+  // already applied to `documentElement.lang` by the url-state bootstrap
+  // above. Only the theme tokens are left to paint, done here as an early
+  // classic (non-module, parser-blocking) script so the correct theme is
+  // active before first paint rather than flashing light then switching.
+  // Same token catalog onto-theme-tile itself builds with
+  // (ontobdc_view.component.adapter.source.theme_catalog), not a second
+  // hardcoded copy of the palette.
   (() => {
     const themes = {{ theme_catalog_json | safe }};
-    const requested = new URLSearchParams(location.search).get("theme");
+    const params = new URLSearchParams(location.search);
+    // The bootstrap applies this when present; without it the Page still has
+    // to honour the language its link carried instead of the one it was
+    // generated in.
+    const language = window.ontobdcUrlState?.value("lang") ?? params.get("lang");
+    if (language) {
+      document.documentElement.lang = language;
+      document.documentElement.dataset.language = language;
+    }
+    const requested = window.ontobdcUrlState?.value("theme") ?? params.get("theme");
     const theme = themes.find((candidate) => candidate.name === requested) ?? themes[0];
     if (!theme) return;
     document.documentElement.dataset.theme = theme.name;
@@ -27,8 +45,37 @@
     }
     document.addEventListener("DOMContentLoaded", () => {
       const backLink = document.querySelector(".back-link");
-      if (backLink) backLink.href = `${backLink.getAttribute("href")}?theme=${encodeURIComponent(theme.name)}`;
+      if (!backLink) return;
+      // Back to the Surface carrying whatever this page is showing. Prefers
+      // the page's url-state runtime, but never depends on it: this Page is
+      // rendered by a package that does not ship that runtime, so the link
+      // resolves the state itself when it is absent rather than dropping it.
+      backLink.href = decorateInternalUrl(backLink.getAttribute("href"));
     });
+
+    function decorateInternalUrl(href) {
+      const state = window.ontobdcUrlState;
+      if (state && typeof state.decorate === "function") return state.decorate(href);
+      const applied = {
+        lang: () =>
+          document.documentElement.lang
+          || document.documentElement.dataset.language
+          || "",
+        theme: () => document.documentElement.dataset.theme || "",
+      };
+      try {
+        const target = new URL(href, location.href);
+        const current = new URLSearchParams(location.search);
+        for (const name of ["lang", "theme"]) {
+          if (target.searchParams.has(name)) continue;
+          const carried = current.get(name) || applied[name]();
+          if (carried) target.searchParams.set(name, carried);
+        }
+        return target.href;
+      } catch {
+        return href;
+      }
+    }
   })();
 </script>
 <style>
@@ -58,11 +105,19 @@
       <span class="connection-status" data-status="idle" role="status" aria-hidden="true"></span>
       <button type="button" class="connect-btn" data-i18n="connectFolder" data-i18n-title="connectFolderTitle" data-i18n-aria-label="connectFolder"></button>
       <button type="button" class="refresh-btn" disabled data-i18n="refreshFromWorkbook" data-i18n-title="refreshFromWorkbookTitle" data-i18n-aria-label="refreshFromWorkbook"></button>
-      <button type="button" class="icon-btn workspace-btn" disabled data-i18n-title="openAnnotationWorkspace" data-i18n-aria-label="openAnnotationWorkspace">
+      {# Commented out: workspace grid icon now on subjects-btn #}
+      {# <button type="button" class="icon-btn workspace-btn" disabled data-i18n-title="openAnnotationWorkspace" data-i18n-aria-label="openAnnotationWorkspace">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+      </button> #}
+      {# Commented out: workspace / person icon not used visually but kept in DOM with display:none
+         to prevent NPE in work_stream_script builder which queries .workspace-btn at lines
+         851 (.disabled setter) and 1162 (.addEventListener) without null guards.
+         Do not fully remove this element unless you also patch the two JS call sites. #}
+      <button type="button" class="icon-btn workspace-btn" disabled style="display:none" aria-hidden="true" data-i18n-title="openAnnotationWorkspace" data-i18n-aria-label="openAnnotationWorkspace">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/></svg>
       </button>
       <button type="button" class="icon-btn subjects-btn" disabled data-i18n-title="openSubjectPage" data-i18n-aria-label="openSubjectPage">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
       </button>
     </div>
   </header>

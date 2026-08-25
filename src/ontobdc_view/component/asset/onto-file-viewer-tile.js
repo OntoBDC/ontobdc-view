@@ -1,5 +1,50 @@
 const I18N = __ONTOBDC_BUILD_I18N__;
 const FILE_VIEWER_PAGE_PATH = ".__ontobdc__/onto-file-viewer.html";
+// Canonical URL-controlled presentation parameters. The page's URL-state
+// runtime owns this list when it is present, and this Tile defers to it —
+// but a Tile is self-sufficient by contract, so it also has to know the
+// list itself. A control that quietly stops carrying state because a
+// runtime from another package is missing is a broken control, not a
+// degraded one.
+const PRESENTATION_PARAMS = ["lang", "theme"];
+
+// What the document is actually rendering, for a page whose URL was never
+// normalized: the link must carry the state the user is looking at, not
+// nothing.
+const APPLIED_PRESENTATION_STATE = {
+  lang: () =>
+    document.documentElement.lang
+    || document.documentElement.dataset.language
+    || "",
+  theme: () => document.documentElement.dataset.theme || "",
+};
+
+/**
+ * Return `href` carrying the active presentation state, so a separate
+ * generated document opens in the language and theme in use here.
+ *
+ * Prefers the page's URL-state runtime; falls back to the same rule when it
+ * is absent. A parameter the link already declares always wins, so
+ * inheriting never overwrites an explicit choice.
+ */
+function decorateInternalUrl(href) {
+  const state = window.ontobdcUrlState;
+  if (state && typeof state.decorate === "function") return state.decorate(href);
+
+  try {
+    const target = new URL(href, location.href);
+    const current = new URLSearchParams(location.search);
+    for (const name of PRESENTATION_PARAMS) {
+      if (target.searchParams.has(name)) continue;
+      const carried = current.get(name) || APPLIED_PRESENTATION_STATE[name]();
+      if (carried) target.searchParams.set(name, carried);
+    }
+    return target.href;
+  } catch {
+    return href;
+  }
+}
+
 const NATIVE_RENDERABLE_EXTENSIONS = Object.freeze(
   new Set([
     "png", "jpg", "jpeg", "gif", "webp", "bmp", "svg", "tif", "tiff",
@@ -294,14 +339,19 @@ class OntoFileViewerTile extends HTMLElement {
     const viewerPageHref = `${FILE_VIEWER_PAGE_PATH}?path=${encodeURIComponent(this.#path)}`;
 
     const isRenderable = NATIVE_RENDERABLE_EXTENSIONS.has(fileExtension);
-    openLink.href = isRenderable ? viewerPageHref : rawFileHref;
+    const openHref = isRenderable ? viewerPageHref : rawFileHref;
+    // Only the generated viewer page inherits presentation state; a raw
+    // container file is not one of our pages and must be linked untouched.
+    openLink.href = isRenderable ? decorateInternalUrl(openHref) : openHref;
 
     let iframe = frameWrap.querySelector("iframe");
     if (!iframe) {
       iframe = document.createElement("iframe");
       frameWrap.replaceChildren(iframe);
     }
-    const resolvedIframeSrc = new URL(viewerPageHref, location.href).href;
+    // The viewer page is a separate generated document, so it inherits the
+    // active presentation state the same way every other internal link does.
+    const resolvedIframeSrc = decorateInternalUrl(viewerPageHref);
     if (this.dataset.tileClosed !== "true" && iframe.src !== resolvedIframeSrc) {
       iframe.src = resolvedIframeSrc;
     }

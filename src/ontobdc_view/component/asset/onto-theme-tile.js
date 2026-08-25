@@ -11,6 +11,55 @@ function t(key, vars) {
   return text;
 }
 
+// The selected theme lives in the URL and nowhere else — no cookie, no
+// storage, no module-level cache. `?theme=` is what a reload, a bookmark or
+// a shared link reads back, and what carries the theme across a navigation
+// to a standalone entity Page. Every generated page embeds
+// `window.ontobdcUrlState` (see `embed_url_state_bootstrap`), which owns
+// reading, changing and propagating the canonical presentation parameters —
+// the same runtime `onto-language-tile` drives, so neither Tile carries its
+// own copy of the rules. On a document without it this Tile degrades to
+// applying the theme in-page, exactly as it behaved before.
+const THEME_PARAM = "theme";
+
+const urlState = () => window.ontobdcUrlState ?? null;
+
+/**
+ * Write `name=value` into the URL and navigate, so page initialization
+ * re-derives the selection from the address bar.
+ *
+ * Prefers the page's URL-state runtime, which owns every canonical
+ * parameter and keeps internal links consistent with it. Its absence must
+ * never silently turn this control into a no-op, though: this package and
+ * the one that embeds that runtime version independently, and a page built
+ * before it existed still has to persist a selection it can reload into.
+ * Falling back to the same write-and-navigate keeps the control honest —
+ * degrading to "repaints the page, forgets on reload" is precisely the bug
+ * this Tile exists to not have.
+ */
+function selectUrlParam(name, value) {
+  if (value === null || value === undefined || value === "") return;
+
+  const state = window.ontobdcUrlState;
+  if (state && typeof state.select === "function") {
+    state.select(name, value);
+    return;
+  }
+
+  try {
+    const url = new URL(location.href);
+    url.searchParams.set(name, value);
+    // Already the active URL: navigating would only cost a reload.
+    if (url.href === location.href) return;
+    // assign(), not replace(): the change stays undoable with Back.
+    location.assign(url.href);
+  } catch {
+    // Navigation refused (sandboxed frame, exotic scheme). The selection is
+    // already applied to this document, so the control still works for this
+    // session — it just will not survive the next reload.
+  }
+}
+
 const ICONS = {
   light: `
     <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -119,7 +168,8 @@ class OntoThemeTile extends HTMLElement {
     // onto-workstream-tile's "open" link and ontobdc_view.render_entity_view)
     // that would otherwise always reopen on the first/default theme.
     const current = document.documentElement.dataset.theme
-      ?? new URLSearchParams(location.search).get("theme");
+      ?? urlState()?.value(THEME_PARAM)
+      ?? new URLSearchParams(location.search).get(THEME_PARAM);
     const foundIndex = THEMES.findIndex(theme => theme.name === current);
     this.#themeIndex = foundIndex >= 0 ? foundIndex : 0;
     this.#applyTheme(THEMES[this.#themeIndex], false);
@@ -138,12 +188,27 @@ class OntoThemeTile extends HTMLElement {
     if (index < 0) return;
     this.#themeIndex = index;
     this.#applyTheme(THEMES[index], true);
+    this.#persistThemeInUrl(THEMES[index]);
   }
 
   nextTheme() {
     if (!THEMES.length) return;
     this.#themeIndex = (this.#themeIndex + 1) % THEMES.length;
     this.#applyTheme(THEMES[this.#themeIndex], true);
+    this.#persistThemeInUrl(THEMES[this.#themeIndex]);
+  }
+
+  // Hand the change to the page's URL-state runtime, which writes `?theme=`
+  // and navigates; connectedCallback then re-derives the theme from the
+  // address bar, so a plain browser reload (or a shared link) keeps it.
+  // #applyTheme has already painted the new theme on the outgoing document,
+  // so the incoming one renders identically and the navigation is invisible
+  // rather than a flash of the old theme. Never called from
+  // connectedCallback: initialization reads the URL, it does not rewrite it,
+  // so there is no navigation loop.
+  #persistThemeInUrl(theme) {
+    if (!theme?.name) return;
+    selectUrlParam(THEME_PARAM, theme.name);
   }
 
   #applyTheme(theme, emit) {

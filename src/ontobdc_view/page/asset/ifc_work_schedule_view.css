@@ -1,0 +1,254 @@
+.gantt-container {
+  display: grid;
+  grid-template-columns: 420px 1fr;
+  gap: 0;
+  border: 1px solid color-mix(in srgb, var(--onto-theme-foreground, #0f172a) 22%, transparent);
+  overflow: hidden;
+  background: var(--onto-theme-background, #ffffff);
+  /* Sem isto o texto da tabela herda o preto padrao do documento e
+     some no tema escuro — o fundo acompanhava o tema, o conteudo nao. */
+  color: var(--onto-theme-foreground, #0f172a);
+}
+
+.gantt-left {
+  overflow-x: auto;
+  border-right: 1px solid color-mix(in srgb, var(--onto-theme-foreground, #0f172a) 22%, transparent);
+}
+
+.gantt-right {
+  overflow-x: auto;
+  position: relative;
+}
+
+table.gantt-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 14px;
+  font-family: inherit;
+}
+
+.gantt-table th,
+.gantt-table td {
+  border-bottom: 1px solid color-mix(in srgb, var(--onto-theme-foreground, #0f172a) 14%, transparent);
+  padding: 6px 10px;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gantt-table th {
+  background: color-mix(in srgb, var(--onto-theme-foreground, #0f172a) 5%, var(--onto-theme-background, #ffffff));
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  font-weight: 700;
+  color: var(--onto-theme-foreground, #0f172a);
+}
+
+.gantt-table tbody tr {
+  height: 34px;
+}
+
+.gantt-table tbody tr:hover {
+  background: color-mix(in srgb, var(--onto-theme-accent, #0ea5e9) 12%, transparent);
+}
+
+.gantt-table td.col-wbs {
+  width: 70px;
+  color: color-mix(in srgb, var(--onto-theme-foreground, #0f172a) 60%, transparent);
+  font-family: monospace;
+  font-size: 12.5px;
+}
+
+.gantt-table td.col-duration {
+  width: 80px;
+  text-align: right;
+}
+
+.gantt-table td.col-completion {
+  width: 52px;
+  text-align: right;
+  color: var(--onto-theme-accent, #0ea5e9);
+}
+
+.gantt-timeline-header {
+  height: 72px;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: color-mix(in srgb, var(--onto-theme-foreground, #0f172a) 5%, var(--onto-theme-background, #ffffff));
+  border-bottom: 1px solid color-mix(in srgb, var(--onto-theme-foreground, #0f172a) 22%, transparent);
+  font-family: sans-serif;
+}
+
+table.gantt-timeline-table {
+  width: 100%;
+  height: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.gantt-timeline-table thead tr {
+  height: 24px;
+}
+
+th.gantt-header-cell {
+  border-right: 1px solid color-mix(in srgb, var(--onto-theme-foreground, #0f172a) 14%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--onto-theme-foreground, #0f172a) 14%, transparent);
+  overflow: hidden;
+  white-space: nowrap;
+  vertical-align: middle;
+  text-align: center;
+  padding: 0;
+  font-weight: 500;
+}
+
+th.gantt-header-cell .gantt-header-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+th.gantt-header-cell.gantt-header-day {
+  color: color-mix(in srgb, var(--onto-theme-foreground, #0f172a) 62%, transparent);
+}
+
+.gantt-header-year-label {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--onto-theme-foreground, #0f172a);
+}
+
+.gantt-header-month-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: color-mix(in srgb, var(--onto-theme-foreground, #0f172a) 88%, transparent);
+}
+
+.gantt-header-day-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: color-mix(in srgb, var(--onto-theme-foreground, #0f172a) 70%, transparent);
+}
+
+svg.gantt-svg {
+  display: block;
+  overflow: visible;
+}
+
+.gantt-row-line {
+  stroke: color-mix(in srgb, var(--onto-theme-foreground, #0f172a) 8%, transparent);
+  stroke-width: 1;
+}
+
+.gantt-grid-col {
+  stroke: color-mix(in srgb, var(--onto-theme-foreground, #0f172a) 5%, transparent);
+  stroke-width: 1;
+}
+
+.gantt-grid-col-major {
+  stroke: color-mix(in srgb, var(--onto-theme-foreground, #0f172a) 14%, transparent);
+  stroke-width: 1;
+}
+
+.gantt-tick-label {
+  font-size: 12px;
+  fill: color-mix(in srgb, var(--onto-theme-foreground, #0f172a) 62%, transparent);
+  font-family: sans-serif;
+}
+
+/* Gantt task bars stay deliberately calm; completed progress must, however,
+ * read immediately against the remaining portion of the same bar. In light
+ * mode the progress overlay is pulled toward the foreground (darker). Dark
+ * mode overrides it below and pushes it toward white (lighter). */
+.gantt-bar {
+  fill: var(--gantt-bar-fill, var(--onto-theme-primary-container, #38bdf8));
+  stroke: var(--gantt-bar-stroke, color-mix(in srgb, var(--onto-theme-primary-container, #38bdf8) 75%, var(--onto-theme-foreground, #0f172a)));
+  stroke-width: 1;
+  rx: 2;
+  ry: 2;
+}
+
+.gantt-bar-progress {
+  fill: var(--gantt-bar-progress-fill, color-mix(in srgb, var(--onto-theme-primary-container, #38bdf8) 58%, var(--onto-theme-foreground, #0f172a)));
+  stroke: color-mix(in srgb, var(--onto-theme-foreground, #0f172a) 32%, transparent);
+  stroke-width: 0.75;
+  rx: 2;
+  ry: 2;
+  opacity: 1;
+}
+
+/* Deliberately not derived from the theme tokens: "critical" is a status,
+   not a surface, and it has to stay recognizably red in light and dark
+   alike. Exposed as custom properties so a theme can still override it. */
+.gantt-bar-critical {
+  fill: var(--gantt-critical-fill, #e53e3e);
+  stroke: var(--gantt-critical-stroke, #c53030);
+}
+
+.gantt-bar-text {
+  font-size: 12.5px;
+  font-weight: 600;
+  fill: var(--onto-theme-foreground, #0f172a);
+  font-family: sans-serif;
+  pointer-events: none;
+}
+
+.gantt-marker-diamond {
+  fill: var(--onto-theme-foreground, #0f172a);
+  stroke: color-mix(in srgb, var(--onto-theme-foreground, #0f172a) 45%, transparent);
+  stroke-width: 1;
+}
+
+.gantt-dependency-line {
+  stroke: color-mix(in srgb, var(--onto-theme-foreground, #0f172a) 70%, transparent);
+  stroke-width: 1.25;
+  fill: none;
+  marker-end: url(#arrowhead);
+}
+
+.gantt-today-line {
+  fill: var(--gantt-today-fill, var(--onto-theme-primary, #ef4444));
+  opacity: var(--gantt-today-opacity, 0.75);
+  pointer-events: none;
+}
+
+/*
+ * Dark-theme overrides for the Gantt itself (chrome-level paint lives in
+ * page_chrome.css so WorkStream and Gantt share it). Keep at the bottom:
+ * the base rules above do not prefix html[data-theme="dark"], so equal
+ * selectors placed here win purely by source order.
+ */
+html[data-theme="dark"] .gantt-bar {
+  fill: #7dd3fc;
+  stroke: color-mix(in srgb, #7dd3fc 78%, #e8eaed);
+}
+
+html[data-theme="dark"] .gantt-bar-progress {
+  fill: color-mix(in srgb, #7dd3fc 55%, #ffffff);
+  stroke: color-mix(in srgb, #ffffff 68%, transparent);
+  opacity: 1;
+}
+
+html[data-theme="dark"] .gantt-today-line {
+  fill: var(--gantt-today-fill, var(--onto-theme-primary, #f87171));
+  opacity: 0.82;
+}
+
+/*
+ * Bar labels: the Gantt bars in dark mode use a sky-300 light blue fill
+ * (#7dd3fc) which is bright enough that white/on-surface text becomes
+ * unreadable. Flip only the bar labels to near-black on dark mode — the
+ * rest of the page (tile background, task table, chrome) stays on dark
+ * with light text, because painting those black-on-dark would be the
+ * exact opposite of what "dark theme" is supposed to do and would drop
+ * the contrast ratio of the surrounding page well below WCAG AA.
+ */
+html[data-theme="dark"] .gantt-bar-text {
+  fill: #0f172a;
+}

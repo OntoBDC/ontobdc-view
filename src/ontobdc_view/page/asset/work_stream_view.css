@@ -1,131 +1,3 @@
-:root {
-  color-scheme: light dark;
-}
-* , *::before, *::after { box-sizing: border-box; }
-/* The browser's own [hidden] { display: none } UA rule has the same
-   specificity (0,1,0) as any single class selector, so any later class
-   rule that sets its own `display` (e.g. .icon-btn { display: inline-flex })
-   silently wins over `hidden` and leaves the element visible/clickable.
-   !important restores `hidden`'s intended meaning regardless of what else
-   targets the element. */
-[hidden] { display: none !important; }
-html, body {
-  margin: 0;
-  padding: 0;
-  min-height: 100%;
-}
-body {
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  background: var(--onto-theme-background, #ffffff);
-  color: var(--onto-theme-foreground, #0f172a);
-}
-.onto-page {
-  max-width: 1160px;
-  margin: 0 auto;
-  padding: clamp(16px, 4vw, 40px);
-  display: flex;
-  flex-direction: column;
-  gap: clamp(12px, 2vw, 20px);
-}
-.onto-page-header {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-.breadcrumb {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--onto-theme-foreground, #0f172a) 6%, transparent);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: .06em;
-  text-transform: uppercase;
-}
-.breadcrumb-crumb {
-  color: color-mix(in srgb, var(--onto-theme-foreground, #0f172a) 45%, transparent);
-}
-.breadcrumb-crumb.is-current {
-  color: color-mix(in srgb, var(--onto-theme-foreground, #0f172a) 80%, transparent);
-}
-.breadcrumb-sep {
-  color: color-mix(in srgb, var(--onto-theme-foreground, #0f172a) 30%, transparent);
-}
-.header-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-left: auto;
-}
-.connect-btn {
-  font-size: 12px;
-  font-weight: 600;
-  padding: 6px 12px;
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--onto-theme-accent, #0ea5e9) 45%, transparent);
-  background: transparent;
-  color: var(--onto-theme-accent, #0ea5e9);
-  cursor: pointer;
-}
-.connection-status {
-  inline-size: 9px;
-  block-size: 9px;
-  border-radius: 50%;
-  flex: none;
-  background: color-mix(in srgb, var(--onto-theme-foreground, #0f172a) 30%, transparent);
-  transition: background-color .2s ease;
-}
-.connection-status[data-status="connecting"] {
-  background: #f59e0b;
-  animation: onto-connection-pulse 1s ease-in-out infinite;
-}
-.connection-status[data-status="connected"] {
-  background: #22c55e;
-  animation: none;
-}
-.connection-status[data-status="error"] {
-  background: #ef4444;
-  animation: none;
-}
-@keyframes onto-connection-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: .35; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .connection-status[data-status="connecting"] { animation: none; }
-}
-.connect-btn:disabled {
-  opacity: .6;
-  cursor: default;
-}
-.icon-btn:disabled {
-  opacity: .35;
-  cursor: default;
-  pointer-events: none;
-}
-.icon-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  inline-size: 28px;
-  block-size: 28px;
-  padding: 0;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--onto-theme-accent, #0ea5e9);
-  cursor: pointer;
-  text-decoration: none;
-}
-.icon-btn:hover {
-  background: color-mix(in srgb, var(--onto-theme-foreground, #0f172a) 10%, transparent);
-}
-.icon-btn svg {
-  inline-size: 16px;
-  block-size: 16px;
-}
 .tile {
   position: relative;
   padding: clamp(20px, 4vw, 32px);
@@ -138,16 +10,19 @@ body {
   flex-direction: column;
   gap: 16px;
 }
+
 .body {
   display: grid;
   gap: 6px;
 }
+
 .name {
   font-size: clamp(22px, 4vw, 32px);
   font-weight: 800;
   line-height: 1.15;
   overflow-wrap: anywhere;
 }
+
 .identifier {
   font-size: 12px;
   font-weight: 600;
@@ -155,6 +30,7 @@ body {
   color: color-mix(in srgb, var(--onto-theme-foreground, #0f172a) 62%, transparent);
   overflow-wrap: anywhere;
 }
+
 .fields {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
@@ -162,17 +38,17 @@ body {
   padding-block-start: 12px;
   border-block-start: 1px solid color-mix(in srgb, var(--onto-theme-foreground, #0f172a) 14%, transparent);
 }
+
 .fields:empty {
   display: none;
   border: 0;
   padding: 0;
 }
-/* The header's .fields currently only ever holds Description (a prose
-   value, not a short label) -- span it across every column track instead
-   of letting it sit in just the first auto-fill column. */
+
 .fields > .field {
   grid-column: 1 / -1;
 }
+
 .field-label {
   font-size: 11px;
   font-weight: 700;
@@ -180,6 +56,7 @@ body {
   text-transform: uppercase;
   color: color-mix(in srgb, var(--onto-theme-accent, #0ea5e9) 85%, var(--onto-theme-foreground, #0f172a));
 }
+
 .field-value {
   font-size: 14px;
   line-height: 1.5;
@@ -187,20 +64,24 @@ body {
   white-space: pre-wrap;
   margin-top: 4px;
 }
+
 .dimension-cards {
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
+
 .dimension-card {
   gap: 12px;
 }
+
 .dimension-card-head {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: 8px;
 }
+
 .dimension-label {
   font-size: 12px;
   font-weight: 700;
@@ -208,16 +89,19 @@ body {
   text-transform: uppercase;
   color: color-mix(in srgb, var(--onto-theme-accent, #0ea5e9) 85%, var(--onto-theme-foreground, #0f172a));
 }
+
 .dimension-value {
   font-size: 14px;
   line-height: 1.5;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
+
 .resource-tabs {
   display: flex;
   gap: 4px;
 }
+
 .resource-tab {
   padding: 8px 14px;
   border: 0;
@@ -228,15 +112,18 @@ body {
   font-weight: 600;
   cursor: pointer;
 }
+
 .resource-tab.is-active {
   background: color-mix(in srgb, var(--onto-theme-accent, #0ea5e9) 16%, transparent);
   color: var(--onto-theme-accent, #0ea5e9);
 }
+
 .resource-body {
   display: grid;
   grid-template-columns: minmax(200px, 280px) 1fr;
   gap: 16px;
 }
+
 .resource-list {
   display: flex;
   flex-direction: column;
@@ -244,19 +131,23 @@ body {
   overflow-y: auto;
   max-height: 260px;
 }
+
 .resource-list:empty::before {
   content: "Nothing here yet.";
   font-size: 13px;
   color: color-mix(in srgb, var(--onto-theme-foreground, #0f172a) 50%, transparent);
 }
+
 .resource-tree-list {
   list-style: none;
   margin: 0;
   padding-inline-start: 0;
 }
+
 .resource-tree-list .resource-tree-list {
   padding-inline-start: 1.1em;
 }
+
 .resource-node {
   display: flex;
   align-items: center;
@@ -266,31 +157,38 @@ body {
   cursor: pointer;
   border: 1px solid transparent;
 }
+
 .resource-node:hover {
   background: color-mix(in srgb, var(--onto-theme-foreground, #0f172a) 6%, transparent);
 }
+
 .resource-node.file.is-selected {
   border-color: color-mix(in srgb, var(--onto-theme-accent, #0ea5e9) 45%, transparent);
   background: color-mix(in srgb, var(--onto-theme-accent, #0ea5e9) 10%, transparent);
 }
+
 .resource-node-icon {
   flex: none;
   opacity: .75;
   font-size: 12px;
 }
+
 .resource-node-name {
   font-size: 13px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
 .resource-node.dir .resource-node-name {
   font-weight: 700;
 }
+
 .resource-node.file .resource-node-name {
   flex: 1;
   min-width: 0;
 }
+
 .resource-relate-btn {
   flex: none;
   font-size: 11px;
@@ -302,16 +200,19 @@ body {
   color: var(--onto-theme-accent, #0ea5e9);
   cursor: pointer;
 }
+
 .resource-relate-btn:disabled {
   opacity: .4;
   cursor: default;
 }
+
 .resource-preview-column {
   display: flex;
   flex-direction: column;
   gap: 8px;
   min-width: 0;
 }
+
 .annotate-btn {
   align-self: flex-start;
   font-size: 12px;
@@ -323,19 +224,23 @@ body {
   color: var(--onto-theme-accent, #0ea5e9);
   cursor: pointer;
 }
+
 .annotate-btn:disabled {
   opacity: .4;
   cursor: default;
 }
+
 .preview-tabs {
   display: flex;
   gap: 4px;
   overflow-x: auto;
   padding-bottom: 4px;
 }
+
 .preview-tabs:empty {
   display: none;
 }
+
 .preview-tab {
   display: flex;
   align-items: center;
@@ -350,15 +255,18 @@ body {
   font-weight: 600;
   cursor: pointer;
 }
+
 .preview-tab.is-active {
   background: color-mix(in srgb, var(--onto-theme-accent, #0ea5e9) 16%, transparent);
   color: var(--onto-theme-accent, #0ea5e9);
 }
+
 .preview-tab-label {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
 .preview-tab-close {
   flex: none;
   display: inline-flex;
@@ -371,10 +279,12 @@ body {
   line-height: 1;
   opacity: .7;
 }
+
 .preview-tab-close:hover {
   opacity: 1;
   background: color-mix(in srgb, var(--onto-theme-foreground, #0f172a) 14%, transparent);
 }
+
 .resource-preview {
   flex: 1;
   border-radius: 12px;
@@ -383,22 +293,26 @@ body {
   min-height: 260px;
   position: relative;
 }
+
 .preview-pane {
   display: none;
   width: 100%;
   height: 100%;
 }
+
 .preview-pane.is-active {
   display: flex;
   align-items: center;
   justify-content: center;
 }
+
 .preview-pane.is-csv.is-active {
   display: flex;
   flex-direction: column;
   align-items: stretch;
   justify-content: flex-start;
 }
+
 .csv-table-wrap {
   display: flex;
   flex-direction: column;
@@ -406,16 +320,19 @@ body {
   height: 100%;
   min-height: 0;
 }
+
 .csv-table-scroll {
   flex: 1;
   overflow: auto;
   min-height: 0;
 }
+
 .csv-table {
   border-collapse: collapse;
   font-size: 12px;
   width: 100%;
 }
+
 .csv-table th,
 .csv-table td {
   padding: 3px 8px;
@@ -423,18 +340,21 @@ body {
   white-space: nowrap;
   border-bottom: 1px solid color-mix(in srgb, var(--onto-theme-foreground, #0f172a) 12%, transparent);
 }
+
 .csv-table th {
   position: sticky;
   top: 0;
   background: var(--onto-theme-background, #ffffff);
   font-weight: 700;
 }
+
 .csv-table-count {
   flex: none;
   font-size: 11px;
   padding: 6px 8px;
   color: color-mix(in srgb, var(--onto-theme-foreground, #0f172a) 50%, transparent);
 }
+
 .csv-fallback {
   display: flex;
   flex-direction: column;
@@ -444,33 +364,21 @@ body {
   font-size: 13px;
   color: color-mix(in srgb, var(--onto-theme-foreground, #0f172a) 50%, transparent);
 }
-/* This hosts ontobdc's own OntoBDCAnnotationWorkspace/SubjectPage
-   components (openWorkspace()/openSubjectPage() below) — the exact
-   same component family used inside .ontobdc-annotation-dialog (the
-   create/edit annotation editor, further down this file). Giving this
-   dialog the light theme it had before inherited none of the
-   editor/workspace's own light-on-dark variable
-   (annotation_workspace.css's `color: var(--ontobdc-annotation-text,
-   #e5eefc)`) and rendered near-white text on a near-white background —
-   unreadable. Matching the editor's dark theme here instead keeps both
-   annotation-related dialogs visually consistent and makes the text
-   legible. SubjectPage is the one exception: it paints its own surface
-   from the page's --onto-theme-* variables (annotation_subject_page.css)
-   instead of inheriting this wrapper's color, so it follows whichever
-   theme the reader already picked rather than staying dark-only.
-*/
+
 .onto-annotation-dialog {
   width: min(90vw, 900px);
   max-height: 85vh;
   border: 1px solid rgba(148, 163, 184, .28);
   border-radius: 14px;
   padding: 0;
-  color: #e5eefc;
-  background: #0f172a;
+  color: var(--onto-theme-foreground, #e5eefc);
+  background: var(--onto-theme-background, #0f172a);
 }
+
 .onto-annotation-dialog::backdrop {
   background: rgba(0, 0, 0, .45);
 }
+
 .onto-annotation-dialog-header {
   display: flex;
   align-items: center;
@@ -478,6 +386,7 @@ body {
   padding: 14px 18px;
   border-bottom: 1px solid rgba(148, 163, 184, .22);
 }
+
 .onto-annotation-dialog-header button {
   border: 0;
   background: transparent;
@@ -486,39 +395,38 @@ body {
   cursor: pointer;
   color: inherit;
 }
+
 .onto-annotation-dialog-body {
   padding: 16px 18px;
   overflow: auto;
   max-height: calc(85vh - 56px);
 }
+
 .resource-preview-empty {
   font-size: 13px;
   color: color-mix(in srgb, var(--onto-theme-foreground, #0f172a) 50%, transparent);
   padding: 24px;
   text-align: center;
 }
+
 .resource-preview img {
   max-width: 100%;
   max-height: 380px;
   object-fit: contain;
 }
+
 .resource-preview iframe {
   width: 100%;
   height: 380px;
   border: 0;
 }
+
 .resource-preview a.resource-open-link {
   color: var(--onto-theme-accent, #0ea5e9);
   font-size: 13px;
   padding: 24px;
 }
 
-/* ontobdc's annotation_editor.css only styles the pieces inside the
-   editor (form/field/toolbar) — it never positions the editor's own
-   root (.ontobdc-annotation-dialog) as a dialog, because that was
-   always meant to be the host page's job. Without this, the editor
-   .section is just appended to <body> as a plain block element, which
-   is why it rendered at the bottom of the page instead of over it. */
 .ontobdc-annotation-dialog {
   position: fixed;
   inset: 0;
@@ -527,9 +435,10 @@ body {
   flex-direction: column;
   overflow: auto;
   padding: 20px;
-  background: #0f172a;
-  color: #e5eefc;
+  background: var(--onto-theme-background, #0f172a);
+  color: var(--onto-theme-foreground, #e5eefc);
 }
+
 .ontobdc-annotation-header {
   display: flex;
   align-items: center;
@@ -538,11 +447,13 @@ body {
   margin-bottom: 16px;
   flex: none;
 }
+
 .ontobdc-annotation-header > div {
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
+
 .ontobdc-annotation-header span {
   font-size: 11px;
   font-weight: 700;
@@ -550,20 +461,11 @@ body {
   text-transform: uppercase;
   opacity: .6;
 }
+
 .ontobdc-annotation-header strong {
   font-size: 18px;
 }
-/* Scoped to a DIRECT child of the editor dialog on purpose:
-   OntoBDCAnnotationWorkspace (the standalone "list every annotation"
-   popup opened via openWorkspace()/the header Workspace icon) uses the
-   exact same class name for its own, unrelated root section — a
-   collision in the shared ontobdc asset, not something this page
-   controls. Without this scoping, the editor's own image+form 2-column
-   split leaked into the Workspace popup too: legend and list both got
-   forced into a tall grid row sized by the taller sibling, leaving the
-   legend's own cell mostly empty. See the unscoped
-   .ontobdc-annotation-workspace rule below for the popup's actual
-   layout. */
+
 .ontobdc-annotation-dialog > .ontobdc-annotation-workspace {
   flex: 1;
   display: grid;
@@ -571,25 +473,25 @@ body {
   gap: 20px;
   min-height: 0;
 }
-/* The standalone Workspace popup (mounted inside .onto-annotation-dialog,
-   further up this file) — summary/legend/list/detail read top to bottom
-   naturally, so there's no need to force them into the editor's 2-column
-   split above. */
+
 .ontobdc-annotation-workspace {
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
+
 .ontobdc-annotation-workspace-summary {
   border: 1px solid rgba(148, 163, 184, .28);
   border-radius: 12px;
   padding: 12px 16px;
 }
+
 .ontobdc-annotation-workspace-legend {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
 }
+
 .ontobdc-annotation-workspace-legend-item {
   display: inline-flex;
   align-items: center;
@@ -599,12 +501,14 @@ body {
   border-radius: 999px;
   font-size: 12px;
 }
+
 .ontobdc-annotation-workspace-legend-item i {
   width: 8px;
   height: 8px;
   border-radius: 50%;
   background: var(--annotation-color, currentColor);
 }
+
 .ontobdc-annotation-workspace-list {
   border: 1px solid rgba(148, 163, 184, .28);
   border-radius: 12px;
@@ -613,18 +517,22 @@ body {
   flex-direction: column;
   gap: 4px;
 }
+
 .ontobdc-annotation-workspace-detail {
   border: 1px solid rgba(148, 163, 184, .28);
   border-radius: 12px;
   padding: 16px;
 }
+
 .ontobdc-annotation-workspace-detail:empty {
   display: none;
 }
+
 .ontobdc-annotation-workspace-detail h3 {
   margin: 0 0 12px;
   font-size: 16px;
 }
+
 .ontobdc-annotation-workspace-detail pre {
   margin: 0 0 16px;
   padding: 12px;
@@ -633,6 +541,7 @@ body {
   font-size: 12px;
   overflow-x: auto;
 }
+
 .ontobdc-annotation-workspace-detail button {
   padding: 8px 14px;
   border-radius: 8px;
@@ -642,24 +551,29 @@ body {
   cursor: pointer;
   font-size: 13px;
 }
+
 .ontobdc-annotation-workspace-detail button:hover {
   background: rgba(255, 255, 255, .1);
 }
+
 .ontobdc-annotation-stage-scroller {
   overflow: auto;
   border-radius: 12px;
   background: rgba(255, 255, 255, .04);
 }
+
 .ontobdc-annotation-stage {
   position: relative;
   width: 100%;
 }
+
 .ontobdc-annotation-stage img,
 .ontobdc-annotation-stage canvas {
   display: block;
   width: 100%;
   height: auto;
 }
+
 .ontobdc-annotation-overlay,
 .ontobdc-annotation-geometry-overlay {
   position: absolute;
@@ -667,17 +581,20 @@ body {
   width: 100%;
   height: 100%;
 }
+
 .ontobdc-annotation-editor {
   display: flex;
   flex-direction: column;
   gap: 14px;
   overflow-y: auto;
 }
+
 .ontobdc-annotation-actions {
   display: flex;
   gap: 8px;
   margin-top: auto;
 }
+
 .ontobdc-annotation-actions button,
 .ontobdc-annotation-header button,
 .ontobdc-annotation-geometry-toolbar button {
@@ -689,6 +606,7 @@ body {
   cursor: pointer;
   font-size: 13px;
 }
+
 .ontobdc-annotation-actions button.is-primary {
   background: #38bdf8;
   border-color: #38bdf8;
@@ -703,6 +621,7 @@ body {
   gap: 8px;
   padding-top: 6px;
 }
+
 .inline-annotations-label {
   font-size: 11px;
   font-weight: 700;
@@ -710,31 +629,37 @@ body {
   text-transform: uppercase;
   color: color-mix(in srgb, var(--onto-theme-foreground, #0f172a) 55%, transparent);
 }
+
 .inline-annotations-actions {
   display: flex;
   gap: 4px;
 }
+
 .annotations-tile-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
 }
+
 .annotations-tile-list {
   display: flex;
   flex-direction: column;
   gap: 6px;
   margin-top: 12px;
 }
+
 .annotations-tile-empty {
   font-size: 13px;
   color: color-mix(in srgb, var(--onto-theme-foreground, #0f172a) 50%, transparent);
 }
+
 .annotations-tile-row {
   border-radius: 10px;
   border: 1px solid color-mix(in srgb, var(--onto-theme-foreground, #0f172a) 12%, transparent);
   overflow: hidden;
 }
+
 .annotations-tile-summary {
   display: flex;
   align-items: center;
@@ -742,9 +667,11 @@ body {
   padding: 10px 12px;
   cursor: pointer;
 }
+
 .annotations-tile-summary:hover {
   background: color-mix(in srgb, var(--onto-theme-foreground, #0f172a) 5%, transparent);
 }
+
 .annotations-tile-badge {
   flex: none;
   font-size: 10px;
@@ -756,6 +683,7 @@ body {
   background: color-mix(in srgb, var(--onto-theme-accent, #0ea5e9) 16%, transparent);
   color: var(--onto-theme-accent, #0ea5e9);
 }
+
 .annotations-tile-body-preview {
   font-size: 13px;
   overflow: hidden;
@@ -763,13 +691,16 @@ body {
   white-space: nowrap;
   min-width: 0;
 }
+
 .annotations-tile-detail {
   padding: 0 12px 12px;
   border-top: 1px solid color-mix(in srgb, var(--onto-theme-foreground, #0f172a) 10%, transparent);
 }
+
 .annotations-tile-detail .field-value {
   margin-top: 10px;
 }
+
 .annotations-tile-meta {
   margin-top: 6px;
   font-size: 11px;

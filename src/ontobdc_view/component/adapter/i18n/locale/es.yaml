@@ -51,7 +51,7 @@ data_container_tile:
   fallbackLabel: "Contenedor"
 
 file_size_tile:
-  title: "STORAGE"
+  title: "Tamaño"
 
 presentation_surface:
   ariaLabel: "Superficie de presentación"
@@ -173,3 +173,29 @@ annotation:
     multiple-points: "Múltiples puntos"
     bounding-box: "Cuadro delimitador"
     clear: "Limpiar geometría"
+
+ifc_work_schedule_view:
+  backToSurface: "Volver a la Surface"
+  breadcrumbSurface: "Surface"
+  connectFolder: "Conectar carpeta"
+  connectFolderTitle: "Conectar la carpeta de este contenedor para leer el cronograma de su propia hoja de calculo"
+  connectedFolder: "Carpeta conectada"
+  reconnectFolder: "Reconectar carpeta"
+  refreshFromWorkbook: "Actualizar"
+  refreshFromWorkbookTitle: "Recargar tareas, fechas y dependencias desde la hoja de calculo del cronograma"
+  requestingAccess: "Solicitando acceso..."
+  allowFolderAccess: "Permita el acceso a la carpeta del contenedor para continuar."
+  browserFileSystemAccessUnavailable: "Este navegador no puede abrir una carpeta local. Use un navegador basado en Chromium."
+  datapackageJsonNotFound: "datapackage.json no se encontro en la carpeta seleccionada."
+  noDatasetSelectedFolder: "La carpeta seleccionada no es el dataset de este cronograma."
+  multipleDatasetsSelectedFolder: "La carpeta seleccionada contiene mas de un dataset. Elija la carpeta del propio cronograma."
+  noScheduleContext: "No hay contexto de IfcWorkSchedule en esta pagina."
+  ganttFilterTitle: "Filtro del Gantt"
+  openGanttFilter: "Filtrar Gantt"
+  ganttFilterStartDate: "Fecha de inicio"
+  ganttFilterEndDate: "Fecha de fin"
+  ganttFilterCriticalPath: "Camino crítico"
+  ganttFilterReset: "Restablecer"
+  ganttFilterApply: "Aplicar"
+  ganttFilterClose: "Cerrar"
+  ganttFilterInvalidRange: "La fecha de inicio debe ser anterior a la fecha de fin."

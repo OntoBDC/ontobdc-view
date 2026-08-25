@@ -51,7 +51,7 @@ data_container_tile:
   fallbackLabel: "Contentor"
 
 file_size_tile:
-  title: "STORAGE"
+  title: "Tamanho"
 
 presentation_surface:
   ariaLabel: "Superfície de apresentação"
@@ -173,3 +173,29 @@ annotation:
     multiple-points: "Múltiplos pontos"
     bounding-box: "Caixa delimitadora"
     clear: "Limpar geometria"
+
+ifc_work_schedule_view:
+  backToSurface: "Voltar para a Surface"
+  breadcrumbSurface: "Surface"
+  connectFolder: "Ligar pasta"
+  connectFolderTitle: "Ligar a pasta deste container para ler o cronograma da propria folha de calculo"
+  connectedFolder: "Pasta ligada"
+  reconnectFolder: "Voltar a ligar a pasta"
+  refreshFromWorkbook: "Atualizar"
+  refreshFromWorkbookTitle: "Recarregar tarefas, datas e dependencias a partir da folha de calculo do cronograma"
+  requestingAccess: "A solicitar acesso..."
+  allowFolderAccess: "Permita o acesso a pasta do container para continuar."
+  browserFileSystemAccessUnavailable: "Este navegador nao consegue abrir uma pasta local. Use um navegador baseado em Chromium."
+  datapackageJsonNotFound: "datapackage.json nao foi encontrado na pasta selecionada."
+  noDatasetSelectedFolder: "A pasta selecionada nao e o dataset deste cronograma."
+  multipleDatasetsSelectedFolder: "A pasta selecionada contem mais do que um dataset. Escolha a pasta do proprio cronograma."
+  noScheduleContext: "Nenhum contexto de IfcWorkSchedule disponivel nesta pagina."
+  ganttFilterTitle: "Filtro do Gantt"
+  openGanttFilter: "Filtrar Gantt"
+  ganttFilterStartDate: "Data de início"
+  ganttFilterEndDate: "Data de fim"
+  ganttFilterCriticalPath: "Caminho crítico"
+  ganttFilterReset: "Repor"
+  ganttFilterApply: "Aplicar"
+  ganttFilterClose: "Fechar"
+  ganttFilterInvalidRange: "A data de início deve ser anterior à data de fim."
