@@ -142,16 +142,24 @@
     <a class="icon-btn back-link" href="../../../index.html" data-i18n-title="backToSurface" data-i18n-aria-label="backToSurface">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
     </a>
-    <div class="breadcrumb"><span class="breadcrumb-crumb" data-i18n="breadcrumbSurface"></span><span class="breadcrumb-sep">/</span><span class="breadcrumb-crumb is-current">IfcWorkScheduleGantt</span></div>
+    <div class="breadcrumb"><span class="breadcrumb-crumb" data-i18n="breadcrumbSurface"></span><span class="breadcrumb-sep">/</span><span class="breadcrumb-crumb is-current">{{ breadcrumb_current_title }}</span></div>
     <div class="header-actions">
       <span class="connection-status" data-status="idle" role="status" aria-hidden="true"></span>
       <button type="button" class="connect-btn" data-i18n="connectFolder" data-i18n-title="connectFolderTitle" data-i18n-aria-label="connectFolder"></button>
-      <button type="button" class="refresh-btn" disabled data-i18n="refreshFromWorkbook" data-i18n-title="refreshFromWorkbookTitle" data-i18n-aria-label="refreshFromWorkbook"></button>
+      <button type="button" class="icon-btn refresh-btn" disabled data-i18n-title="refreshFromWorkbookTitle" data-i18n-aria-label="refreshFromWorkbookTitle" aria-label="refresh">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+      </button>
       <button type="button" class="icon-btn workspace-btn" disabled style="display:none" aria-hidden="true" data-i18n-title="openAnnotationWorkspace" data-i18n-aria-label="openAnnotationWorkspace">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/></svg>
       </button>
       <button type="button" class="icon-btn gantt-filter-btn" data-i18n-title="openGanttFilter" data-i18n-aria-label="openGanttFilter">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+      </button>
+      <button type="button" class="icon-btn gantt-add-task-btn" disabled data-i18n-title="addTaskTitle" data-i18n-aria-label="addTask">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      </button>
+      <button type="button" class="icon-btn gantt-fullscreen-btn" data-i18n-title="enterFullscreen" data-i18n-aria-label="enterFullscreen" aria-label="fullscreen">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
       </button>
     </div>
   </header>
@@ -382,6 +390,67 @@ window.addEventListener("load", function () {
   const openBtn = document.querySelector(".gantt-filter-btn");
   const closeBtn = document.querySelector(".gantt-filter-close");
   const resetBtn = document.querySelector(".gantt-filter-reset");
+  const fsBtn = document.querySelector(".gantt-fullscreen-btn");
+
+  // ── Fullscreen toggle ──────────────────────────────────────────────────
+  if (fsBtn) {
+    const ENTER_SVG =
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>';
+    const EXIT_SVG =
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v3a2 2 0 0 1-2 2H3"/><path d="M21 8h-3a2 2 0 0 1-2-2V3"/><path d="M3 16h3a2 2 0 0 1 2 2v3"/><path d="M16 21v-3a2 2 0 0 1 2-2h3"/></svg>';
+    function t(key, fallback) {
+      try {
+        const rt_ = window.OntoBDCGanttViewRuntime;
+        if (rt_ && typeof rt_.t === "function") {
+          const value = rt_.t(key);
+          if (value && value !== key) return value;
+        }
+      } catch (e) {}
+      return fallback;
+    }
+    function setFsIcon(active) {
+      const label = active ? t("exitFullscreen", "Exit fullscreen") : t("enterFullscreen", "Open fullscreen");
+      fsBtn.innerHTML = active ? EXIT_SVG : ENTER_SVG;
+      fsBtn.setAttribute("title", label);
+      fsBtn.setAttribute("aria-label", label);
+      if (active) {
+        document.documentElement.classList.add("is-fullscreen-presenting");
+        document.documentElement.dataset.fullscreenPresenting = "true";
+      } else {
+        document.documentElement.classList.remove("is-fullscreen-presenting");
+        delete document.documentElement.dataset.fullscreenPresenting;
+      }
+    }
+    function isFsActive() {
+      try {
+        return Boolean(document.fullscreenElement || document.webkitFullscreenElement);
+      } catch (e) { return false; }
+    }
+    function refreshFsState() {
+      setFsIcon(isFsActive());
+      try { window.dispatchEvent(new Event("resize")); } catch (e) {}
+    }
+    fsBtn.addEventListener("click", function () {
+      try {
+        if (isFsActive()) {
+          const exit = document.exitFullscreen || document.webkitExitFullscreen;
+          if (exit) exit.call(document);
+        } else {
+          const root = document.documentElement;
+          const req = root.requestFullscreen || root.webkitRequestFullscreen;
+          if (req) req.call(root);
+        }
+      } catch (e) {}
+      setTimeout(refreshFsState, 0);
+    });
+    if ("onfullscreenchange" in document) {
+      document.addEventListener("fullscreenchange", refreshFsState);
+    } else if ("onwebkitfullscreenchange" in document) {
+      document.addEventListener("webkitfullscreenchange", refreshFsState);
+    }
+    refreshFsState();
+  }
+
   if (!rt || !dialog || !form || !openBtn || typeof rt.runRender !== "function") return;
 
   const originalRunRender = rt.runRender.bind(rt);

@@ -199,3 +199,7 @@ ifc_work_schedule_view:
   ganttFilterApply: "Aplicar"
   ganttFilterClose: "Cerrar"
   ganttFilterInvalidRange: "La fecha de inicio debe ser anterior a la fecha de fin."
+  addTask: "Agregar tarea"
+  addTaskTitle: "Registrar una nueva tarea en el cronograma"
+  enterFullscreen: "Abrir en pantalla completa"
+  exitFullscreen: "Salir de pantalla completa"

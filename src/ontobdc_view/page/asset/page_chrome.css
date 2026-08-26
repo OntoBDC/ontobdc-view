@@ -222,6 +222,47 @@ body {
 }
 
 /*
+ * Full-screen presentation mode (triggered by the gantt / work-stream page
+ * buttons). When the <html> root has the `is-fullscreen-presenting` data
+ * attribute (set by the chrome-controller when requestFullscreen succeeds)
+ * OR the root is the :fullscreen element itself, every page drops all the
+ * layout chrome that is useful when the page sits inside the surface
+ * (max-width, margin auto, padding) and fills the entire viewport with
+ * just the actual payload (gantt, dimension cards, etc.).  The header and
+ * dimension cards are not hidden outright -- that would make it hard to
+ * exit with the button -- they just become a non-invasive floating
+ * chrome overlay, and the tile body consumes all remaining space.
+ */
+html.is-fullscreen-presenting,
+html:fullscreen,
+html:-webkit-full-screen {
+  /* No-op selector scope for the nested fullscreen layout rules below. */
+}
+
+html.is-fullscreen-presenting main.onto-page,
+html:fullscreen main.onto-page,
+html:-webkit-full-screen main.onto-page {
+  max-width: none;
+  inline-size: 100%;
+  block-size: 100vh;
+  margin: 0;
+  padding: 0;
+  gap: 0;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+}
+
+html.is-fullscreen-presenting .onto-page-header,
+html:fullscreen .onto-page-header,
+html:-webkit-full-screen .onto-page-header {
+  margin: 0;
+  border-radius: 0;
+  border-bottom: 1px solid var(--onto-theme-outline-variant, #3c3f43);
+  background-color: color-mix(in srgb, var(--onto-theme-on-surface, #0f172a) 96%, transparent);
+  backdrop-filter: blur(6px);
+}
+
+/*
  * Dark-theme overrides (live when the page bootstrap sets html.dataset.theme).
  * Kept at the very bottom of this stylesheet on purpose: the light/base
  * block above does not name any selector with `html[data-theme="dark"]`, so

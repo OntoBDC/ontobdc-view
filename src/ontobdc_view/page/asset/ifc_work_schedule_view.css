@@ -46,6 +46,15 @@ table.gantt-table {
   color: var(--onto-theme-foreground, #0f172a);
 }
 
+/* Must match rt.HEADER_HEIGHT (72, task_table_timeline.js) — the right
+   panel's timeline header is 3 stacked rows (year/month/day) totalling
+   72px; without pinning the left table's single header row to the same
+   height, its first task row starts higher than row 0's SVG bar and every
+   row below drifts out of alignment with its WBS row from the very top. */
+.gantt-table thead tr {
+  height: 72px;
+}
+
 .gantt-table tbody tr {
   height: 34px;
 }
@@ -251,4 +260,212 @@ html[data-theme="dark"] .gantt-today-line {
  */
 html[data-theme="dark"] .gantt-bar-text {
   fill: #0f172a;
+}
+
+/*
+ * Full-screen gantt layout overrides. When the page enters presentation
+ * mode (html.is-fullscreen-presenting set by the chrome controller, or
+ * the browser-native :fullscreen pseudo-class is active on <html>):
+ *
+ *   1. The tile body fills *all* remaining vertical space (the header
+ *      and dimension cards collapse to their own size), the gantt
+ *      container becomes the primary viewport.
+ *   2. The left column (task table) grows from 420 px fixed into a
+ *      proportional clamp: enough room for long task names in big
+ *      schedules, but never so wide it crowds the timeline.
+ *   3. The scroll containers (left/right panes) switch from bounded
+ *      auto-box to 100 % of the tile so vertical scroll covers the
+ *      whole timeline, not just a small embedded window.
+ *   4. sticky headers (task table + timeline) are kept so rows and
+ *      column headers still line up correctly when scrolling.
+ */
+html.is-fullscreen-presenting .onto-page-body.tile,
+html:fullscreen .onto-page-body.tile,
+html:-webkit-full-screen .onto-page-body.tile {
+  border-radius: 0;
+  inline-size: 100%;
+  block-size: 100%;
+  padding: 0;
+  margin: 0;
+  box-shadow: none;
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+}
+
+html.is-fullscreen-presenting .onto-page-body.tile > .body,
+html:fullscreen .onto-page-body.tile > .body,
+html:-webkit-full-screen .onto-page-body.tile > .body,
+html.is-fullscreen-presenting .onto-page-body.tile > .fields,
+html:fullscreen .onto-page-body.tile > .fields,
+html:-webkit-full-screen .onto-page-body.tile > .fields {
+  padding: 10px clamp(16px, 2vw, 24px);
+  border-bottom: 1px solid var(--onto-theme-outline-variant, #3c3f43);
+}
+
+html.is-fullscreen-presenting .gantt-container,
+html:fullscreen .gantt-container,
+html:-webkit-full-screen .gantt-container {
+  inline-size: 100%;
+  block-size: 100%;
+  max-block-size: none;
+  border-radius: 0;
+  border-left: 0;
+  border-right: 0;
+  border-bottom: 0;
+  grid-template-columns: minmax(420px, 32vw) 1fr;
+}
+
+html.is-fullscreen-presenting .gantt-left,
+html:fullscreen .gantt-left,
+html:-webkit-full-screen .gantt-left,
+html.is-fullscreen-presenting .gantt-right,
+html:fullscreen .gantt-right,
+html:-webkit-full-screen .gantt-right {
+  block-size: 100%;
+  overflow: auto;
+}
+
+/*
+ * Double-click-to-edit modal (task_table_timeline.js openEditDialog()).
+ * Deliberately mirrors .onto-annotation-dialog's structure/tokens
+ * (work_stream_view.css) rather than inventing a new dialog language —
+ * small native <dialog>, header with a close button, body below.
+ */
+.gantt-bar,
+.gantt-marker-diamond {
+  cursor: pointer;
+}
+
+.onto-gantt-edit-dialog {
+  width: min(92vw, 380px);
+  border: 1px solid rgba(148, 163, 184, .28);
+  border-radius: 14px;
+  padding: 0;
+  color: var(--onto-theme-foreground, #0f172a);
+  background: var(--onto-theme-background, #ffffff);
+}
+
+.onto-gantt-edit-dialog::backdrop {
+  background: rgba(0, 0, 0, .45);
+}
+
+.onto-gantt-edit-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid color-mix(in srgb, var(--onto-theme-foreground, #0f172a) 14%, transparent);
+}
+
+.onto-gantt-edit-dialog-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+
+.onto-gantt-edit-title-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.onto-gantt-edit-rename-btn {
+  font-size: 13px !important;
+  opacity: .6;
+}
+
+.onto-gantt-edit-rename-btn:hover {
+  opacity: 1;
+}
+
+.onto-gantt-edit-title-input {
+  font: inherit;
+  font-weight: 700;
+  flex: 1;
+  min-width: 0;
+  padding: 3px 6px;
+  border-radius: 6px;
+  border: 1px solid var(--onto-theme-accent, #0ea5e9);
+  background: var(--onto-theme-background, #ffffff);
+  color: var(--onto-theme-foreground, #0f172a);
+}
+
+.onto-gantt-edit-dialog-header button {
+  border: 0;
+  background: transparent;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  color: inherit;
+}
+
+.onto-gantt-edit-dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 18px 18px;
+}
+
+.onto-gantt-edit-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: color-mix(in srgb, var(--onto-theme-foreground, #0f172a) 80%, transparent);
+}
+
+.onto-gantt-edit-field input[type="date"] {
+  font: inherit;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--onto-theme-foreground, #0f172a) 24%, transparent);
+  background: var(--onto-theme-background, #ffffff);
+  color: var(--onto-theme-foreground, #0f172a);
+}
+
+.onto-gantt-edit-error {
+  display: none;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--gantt-critical-fill, #e53e3e);
+}
+
+.onto-gantt-edit-dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.onto-gantt-edit-btn {
+  font: inherit;
+  font-weight: 600;
+  font-size: 13px;
+  padding: 7px 14px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+
+.onto-gantt-edit-btn-secondary {
+  background: transparent;
+  border-color: color-mix(in srgb, var(--onto-theme-foreground, #0f172a) 24%, transparent);
+  color: var(--onto-theme-foreground, #0f172a);
+}
+
+.onto-gantt-edit-btn-primary {
+  background: var(--onto-theme-primary-container, color-mix(in srgb, var(--onto-theme-accent, #0ea5e9) 22%, var(--onto-theme-background, #ffffff)));
+  color: var(--onto-theme-on-primary-container, var(--onto-theme-foreground, #0f172a));
+  border-color: var(--onto-theme-accent, #0ea5e9);
+}
+
+.onto-gantt-edit-btn-primary:disabled {
+  opacity: .6;
+  cursor: default;
 }

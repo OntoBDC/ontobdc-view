@@ -80,6 +80,28 @@ _GANTT_SCRIPT_NAMES = (
 _IFC_WORK_SCHEDULE_TYPE_URI = "https://infobim.org/ontology/ns#IfcWorkSchedule"
 
 
+def _short_title_from_page_name(page_name: str) -> str:
+    """Derive a breadcrumb-friendly short title from ``PageMetadata.name``.
+
+    *No hardcoded list of page names here* -- the rule is purely syntactic
+    over the naming convention already in use for every ``PageMetadata``:
+    ``"<EntityType> <CapabilityKind> View"``.  We strip the trailing
+    ``" View"`` suffix and take the last *meaningful* whitespace-separated
+    token, so ``"IfcWorkSchedule Gantt View"`` becomes ``"Gantt"``,
+    ``"Work Stream View"`` becomes ``"Work Stream"``, and any future Page
+    whose name follows the same convention gets a clean breadcrumb title
+    without changes to this function.
+    """
+    name = str(page_name or "").strip()
+    without_suffix = name.removesuffix(" View") if name.endswith(" View") else name
+    tokens = [token for token in without_suffix.split() if token]
+    if len(tokens) <= 1:
+        return without_suffix or name
+    # Skip the first token (it's the IfcXXX entity type or Work/Stream kind
+    # prefix) and keep the last N words that name the view concept.
+    return " ".join(tokens[1:])
+
+
 class EntityViewRenderAdapter(EntityViewRenderPort):
     """Renders a standalone detail Page for one entity via Jinja.
 
@@ -222,6 +244,7 @@ class EntityViewRenderAdapter(EntityViewRenderPort):
             language=language,
             url_state_bootstrap=url_state_bootstrap,
             page_title=metadata.name,
+            breadcrumb_current_title=_short_title_from_page_name(metadata.name),
             entity_id=entity_id,
             identifier=identifier,
             entity_json=entity_json,

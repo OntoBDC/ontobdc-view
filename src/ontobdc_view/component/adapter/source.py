@@ -1,14 +1,14 @@
-from __future__ import annotations
+
 
 import json
 from importlib.resources import files
-from typing import Optional
+from pathlib import Path
+from typing import Dict, List, Optional
 from urllib.parse import quote
 
 from ontobdc.shared.domain.port.component_source import ComponentSourcePort
 
 from .i18n import LANGUAGE_CATALOG, catalog_for_namespace
-
 _BUILD_PLACEHOLDER = "__ONTOBDC_BUILD_"
 
 _THEMES = [
@@ -52,6 +52,216 @@ _BRAND = {
     ),
     "slogan": "Data with Brains",
 }
+
+# Canonical (product -> asset layout) table -- exactly mirrors
+# `_PRODUCT` in ontobdc.view.plugin.capability.transformation.surface_branded
+# so whichever SVGs that capability downloaded into the project dir are
+# automatically discoverable by this renderer WITHOUT importing that
+# capability (zero coupling, approach A).  Each product tier maps to:
+#   (hidden_dir, asset_dir, brand_filename, logotype_filename, display_name, slogan)
+# Slogan is "" for InfoBIM on purpose -- the branded tile auto-falls back
+# to "logotype" representation when the slogan is falsy (see
+# `OntoLogoTile.representation`).
+_PRODUCT_ASSET_LAYOUTS = (
+    (
+        ".__infobim__",
+        "assets",
+        "InfoBIMBrand.svg",
+        "InfoBIMLogotype.svg",
+        "InfoBIM",
+        "",
+    ),
+    (
+        ".__ontobdc__",
+        "asset",
+        "OntoBDCBrand.svg",
+        "OntoBDCLogotype.svg",
+        "OntoBDC",
+        "Data with Brains",
+    ),
+)
+
+
+def _read_text_if_svg(path: Path) -> Optional[str]:
+    """Return the decoded content of ``path`` if it exists and is an SVG.
+
+    Any read/decode/validation failure is swallowed on purpose -- brand
+    resolution is cosmetic, never a reason to break page packaging.
+    """
+    try:
+        if not path.is_file():
+            return None
+        raw = path.read_bytes()
+    except (OSError, ValueError):
+        return None
+    probe = raw.lstrip()[:512].lower()
+    if b"<svg" not in probe:
+        return None
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        try:
+            return raw.decode("utf-8", errors="replace")
+        except Exception:
+            return None
+
+
+def _candidate_brand_roots(root_path: Optional[str]) -> List[Path]:
+    """Return filesystem paths where a product marker dir may reasonably live.
+
+    We cannot rely solely on the user's current working directory because
+    ``infobim view`` can be launched from arbitrary shell locations, some
+    Python build tooling temporarily ``chdir``s into temporary folders
+    during editable wheel installs, and daemon/CI invocations may set cwd
+    to empty temp dirs.  Instead we collect candidates from three tiers
+    and let ``_resolve_brand_from_assets`` walk each of them upward until
+    finding a product marker:
+
+    1. Explicit ``root_path`` provided by the caller (highest relevance,
+       if present).  We try both the literal path and its directory
+       because callers occasionally pass a file instead of a dir.
+    2. ``Path.cwd()`` as a best-effort convenience fallback for shells
+       that ``cd``'d into the project.
+    3. Directories derived from the installed ``__file__`` locations of
+       ``ontobdc`` (shared runtime), ``ontobdc_view`` (ourselves), and
+       ``infobim`` (BIM runtime) when we are deployed as an editable
+       monorepo (which is 100% the case for InfoBIM workstations).  These
+       paths are static for a given environment and therefore immune to
+       any ``cwd`` or ``chdir`` shenanigans.
+
+    Every returned path is guaranteed absolute+resolved (or skipped if we
+    cannot resolve it).  Duplicates are intentionally preserved because
+    the walk-up logic is cheap and we want the order above to represent
+    priority for any future tie-breaking.
+    """
+    candidates: List[Path] = []
+
+    # Tier 1 -- explicit caller hint.
+    if isinstance(root_path, str) and root_path.strip():
+        try:
+            explicit = Path(root_path).expanduser().resolve()
+        except (OSError, ValueError):
+            explicit = None
+        if explicit is not None:
+            candidates.append(explicit)
+            try:
+                parent = explicit.parent
+                if parent != explicit:
+                    candidates.append(parent)
+            except (OSError, ValueError):
+                pass
+
+    # Tier 2 -- current working directory.
+    try:
+        candidates.append(Path.cwd().resolve())
+    except (OSError, ValueError):
+        pass
+
+    # Tier 3 -- installed package __file__ / __path__ locations (monorepo
+    # heuristics).  Namespace packages and ``pyproject.toml``-based editable
+    # installs may set ``__file__ = None`` but still expose a filesystem
+    # location via ``__path__[0]``; we try both so this layer keeps working
+    # in every packaging configuration we support.  From any path we walk
+    # up a generous 10 directories because an editable installed package
+    # layout in a monorepo looks like:
+    #   <repo>/ontobdc/src/ontobdc/__init__.py  (depth 3 to reach <repo>)
+    # and we want a comfortable safety margin to also cover future cases
+    # where nested sub-projects carry markers at the workspace root.
+    for module_name in ("ontobdc", "ontobdc_view", "infobim"):
+        try:
+            module = __import__(module_name)
+            candidate_roots: List[Path] = []
+            module_file = getattr(module, "__file__", None)
+            if isinstance(module_file, str) and module_file:
+                candidate_roots.append(Path(module_file).expanduser().resolve().parent)
+            module_path_list = getattr(module, "__path__", None)
+            if isinstance(module_path_list, (list, tuple)):
+                for item in module_path_list:
+                    if isinstance(item, str) and item:
+                        candidate_roots.append(Path(item).expanduser().resolve())
+            if not candidate_roots:
+                continue
+            for pkg_root in candidate_roots:
+                for _ in range(10):
+                    try:
+                        candidates.append(pkg_root.resolve())
+                    except (OSError, ValueError):
+                        pass
+                    try:
+                        up = pkg_root.parent
+                        if up == pkg_root:
+                            break
+                        pkg_root = up
+                    except (OSError, ValueError):
+                        break
+        except Exception:
+            continue
+
+    # De-duplicate while preserving order.
+    seen: set = set()
+    ordered: List[Path] = []
+    for path in candidates:
+        try:
+            key = str(path)
+        except (OSError, ValueError):
+            continue
+        if key in seen:
+            continue
+        seen.add(key)
+        ordered.append(path)
+    return ordered
+
+
+def _resolve_brand_from_assets(root_path: Optional[str]) -> Optional[Dict[str, str]]:
+    """Look for branding SVGs that `surface_branded` already downloaded.
+
+    No coupling to that capability exists here: we simply scan the two
+    canonical project hidden directories (``.__infobim__`` first because
+    InfoBIM-specific projects carry that marker; ``.__ontobdc__`` as the
+    generic fallback) starting from every candidate root returned by
+    ``_candidate_brand_roots`` and walking upward to the filesystem root
+    for each.  That dual search (many starting points + walk up per
+    starting point) guarantees we find assets placed in the workspace
+    root even when callers cannot provide an explicit project path and
+    the current working directory is not set to a project subtree.
+
+    Walk-up depth is capped defensively at 32 levels per starting point
+    to avoid pathological loops on unusual filesystem mounts.
+
+    Returns ``None`` if no recognised product asset tier was found so the
+    caller can fall back to the shipped hard-coded default.
+    """
+    starting_points = _candidate_brand_roots(root_path)
+    if not starting_points:
+        return None
+
+    for start in starting_points:
+        search_bases: List[Path] = []
+        candidate = start
+        for _ in range(32):
+            search_bases.append(candidate)
+            parent = candidate.parent
+            if parent == candidate:
+                break
+            candidate = parent
+
+        for base in search_bases:
+            for hidden, asset_dir, brand_file, logotype_file, name, slogan in _PRODUCT_ASSET_LAYOUTS:
+                marker = base / hidden
+                if not marker.is_dir():
+                    continue
+                assets = marker / asset_dir
+                brand_svg = _read_text_if_svg(assets / brand_file)
+                logotype_svg = _read_text_if_svg(assets / logotype_file)
+                if brand_svg is None or logotype_svg is None:
+                    continue
+                return {
+                    "name": name,
+                    "mark_svg": brand_svg.strip(),
+                    "logotype_svg": logotype_svg.strip(),
+                    "slogan": slogan,
+                }
+    return None
 
 _LANGUAGES = LANGUAGE_CATALOG
 
@@ -122,28 +332,91 @@ _I18N_NAMESPACE_BY_TAG = {
 
 
 def _project_brand(root_path: Optional[str]) -> dict:
-    """Merge a project's own `brand:` section from `.__ontobdc__/config.yaml`
-    over the shipped OntoBDC default brand.
+    """Resolve the effective brand for a project with this precedence:
 
-    Same project-override tier `OntologyConfigAdapter` already applies to
-    ontology file resolution (tier 2: `.__ontobdc__/config.yaml`), just for
-    the brand name/SVG/slogan instead of an ontology file — a project sets
-    only the keys it wants to change (`name`, `mark_svg`, `logotype_svg`,
-    `slogan`); anything it omits keeps the shipped default. Any failure
-    (no root_path, no config file, unset project root, malformed YAML) is
-    non-fatal: this is cosmetic, never a reason to fail Surface packaging.
+    0. Fallback root.  ``root_path`` is allowed to be ``None`` because
+       some callers (``InfoBIMComponentSourceAdapter.scripts()`` prior to
+       this fix) invoke ``component_source(tag)`` with no project hint;
+       in that case we walk up from the current working directory so the
+       branding still resolves for assets placed in a super-project/work-
+       space root above a nested per-project container.
+    1. Shipped hard-coded defaults (``_BRAND``).  Always present as the
+       ultimate fallback so a project with zero local config and zero
+       downloaded assets still renders a real logo tile.
+    2. Product-tier branding discovered from files in the project root
+       (``_resolve_brand_from_assets``).  When ``surface_branded`` has
+       previously downloaded ``InfoBIMBrand.svg`` / ``InfoBIMLogotype.svg``
+       into ``.__infobim__/assets`` -- or the OntoBDC equivalents into
+       ``.__ontobdc__/asset`` -- this tier overrides the shipped defaults
+       without any Python coupling to that capability (approach A).
+    3. Explicit overrides the user wrote in ``.__ontobdc__/config.yaml``
+       under the ``brand:`` mapping.  Highest precedence so operators can
+       always override anything -- including the auto-discovered product
+       branding -- by editing one project-local YAML key.
+
+    Any failure at tiers 2 or 3 is non-fatal: cosmetic branding never
+    breaks Surface packaging.
     """
-    if not root_path:
-        return dict(_BRAND)
+    resolved_root: Optional[str]
+    if isinstance(root_path, str) and root_path.strip():
+        resolved_root = root_path
+    else:
+        try:
+            resolved_root = str(Path.cwd().resolve())
+        except (OSError, ValueError):
+            resolved_root = None
+
+    base = dict(_BRAND)
+
+    # Tier 2 override -- product branding discovered from on-disk assets.
+    # ``slogan`` is allowed to land as "" so projects like InfoBIM (which
+    # ship no slogan) drop the shipped "Data with Brains" phrase and the
+    # logo tile switches cleanly to logotype-only representation. All
+    # other keys still require a truthy non-empty value to be applied.
+    discovered = _resolve_brand_from_assets(resolved_root)
+    if isinstance(discovered, dict):
+        for key, value in discovered.items():
+            if not isinstance(value, str):
+                continue
+            if key == "slogan":
+                base[key] = value
+            elif value.strip():
+                base[key] = value
+
+    if not resolved_root:
+        return base
     try:
         from ontobdc.shared.adapter.config import ConfigDataAdapter
 
-        overrides = (ConfigDataAdapter(root_dir=root_path).all or {}).get("brand")
+        overrides = (ConfigDataAdapter(root_dir=resolved_root).all or {}).get("brand")
     except Exception:
-        return dict(_BRAND)
+        return base
     if not isinstance(overrides, dict):
-        return dict(_BRAND)
-    return {**_BRAND, **overrides}
+        return base
+    # Tier 3 override -- explicit user-written ``brand:`` section in YAML.
+    # Same truthy-except-slogan rule as tier 2, so a user can intentionally
+    # blank the slogan by writing `slogan: ""` in the project config.
+    #
+    # Additionally we SKIP any override value that is byte-for-byte identical
+    # to the shipped ``_BRAND`` default for that key.  Rationale: the old
+    # hotfix used to auto-write those exact default values into the YAML
+    # on first init, so an operator who has never edited ``brand:`` manually
+    # will still have a YAML that looks like it carries explicit overrides.
+    # A real user override is -- by definition -- a value DIFFERENT from the
+    # shipped default.  Detecting auto-generated stale overrides this way
+    # lets tier 2 (on-disk product asset discovery) win when the user has
+    # done nothing beyond letting the old hotfix seed the YAML.
+    for key, value in overrides.items():
+        if not isinstance(value, str):
+            continue
+        shipped_default = _BRAND.get(key)
+        if isinstance(shipped_default, str) and shipped_default == value:
+            continue
+        if key == "slogan":
+            base[str(key)] = value
+        elif value.strip():
+            base[str(key)] = value
+    return base
 
 
 class ComponentSourceAdapter(ComponentSourcePort):

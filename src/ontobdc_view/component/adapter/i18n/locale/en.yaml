@@ -200,3 +200,7 @@ ifc_work_schedule_view:
   ganttFilterApply: "Apply"
   ganttFilterClose: "Close"
   ganttFilterInvalidRange: "Start date must be before end date."
+  addTask: "Add task"
+  addTaskTitle: "Register a new task in the schedule"
+  enterFullscreen: "Open fullscreen"
+  exitFullscreen: "Exit fullscreen"

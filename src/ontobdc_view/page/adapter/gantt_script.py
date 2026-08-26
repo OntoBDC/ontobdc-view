@@ -139,7 +139,12 @@ class GanttScriptAdapter(GanttScriptPort):
   var rt = window.OntoBDCGanttViewRuntime = window.OntoBDCGanttViewRuntime || { state: {} };
   console.log("[gantt-view] state start: graph_reader_script_generated");
 
-  rt.ROW_HEIGHT = 28;
+  // Must match `.gantt-table tbody tr { height: 34px; }` in
+  // ifc_work_schedule_view.css — this drives the SVG bar Y offsets on the
+  // right, the CSS drives the actual <tr> height on the left; any gap
+  // between the two compounds per row and drifts the bars away from their
+  // WBS rows the further down the list you scroll.
+  rt.ROW_HEIGHT = 34;
   rt.HEADER_HEIGHT = 72;
   rt.HEADER_ROW_HEIGHT_YEAR = 24;
   rt.HEADER_ROW_HEIGHT_MONTH = 24;
@@ -1000,12 +1005,270 @@ class GanttScriptAdapter(GanttScriptPort):
       parsed = parseWorkbookFromArrayBuffer(ab);
     }
     var built = buildGanttNodesFromWorkbook(currentViewPayload, parsed, resourceIndex);
+    // Stashed so saveTaskDates() below can write back into this exact same
+    // file/workbook object later without re-scanning the whole connected
+    // folder again on every single date edit.
+    runtime.state.workbookFileHandle = best.fileHandle;
+    runtime.state.workbookSheetJs = parsed.workbook;
+    runtime.state.workbookRelPath = best.relPath || "";
     return {
       nodes: built.nodes,
       workbookPath: best.relPath || "",
       counts: built.counts
     };
   }
+
+  // ---------------------------------------------------------------------------
+  // Task date editing (the Gantt's double-click modal, task_table_timeline.js)
+  // writes ScheduleStart/ScheduleFinish back into the *same* connected xlsx
+  // file it read them from, via SheetJS + the File System Access API write
+  // stream already granted by container_connection.js's directory picker —
+  // no pyodide/openpyxl round-trip needed since SheetJS can both read and
+  // write .xlsx natively in the browser.
+  // ---------------------------------------------------------------------------
+  async function writeScheduleCellsToWorkbook(taskTimeGlobalId, startIso, finishIso) {
+    var fileHandle = runtime.state.workbookFileHandle;
+    var wb = runtime.state.workbookSheetJs;
+    if (!fileHandle || !wb) {
+      throw new Error("Nenhuma pasta conectada — conecte o container para salvar.");
+    }
+    if (!window.XLSX || !window.XLSX.utils) {
+      throw new Error("SheetJS indisponível para salvar a planilha.");
+    }
+    var XLSX = window.XLSX;
+    if (wb.SheetNames.indexOf("IfcTaskTime") === -1) {
+      throw new Error("A aba IfcTaskTime não foi encontrada na planilha conectada.");
+    }
+    var ws = wb.Sheets["IfcTaskTime"];
+    var range = XLSX.utils.decode_range(ws["!ref"]);
+    var headerRow = range.s.r;
+    var colByName = {};
+    for (var c = range.s.c; c <= range.e.c; c++) {
+      var headerCell = ws[XLSX.utils.encode_cell({ r: headerRow, c: c })];
+      var colName = (headerCell && headerCell.v !== undefined && headerCell.v !== null)
+        ? String(headerCell.v).trim() : "";
+      if (colName) colByName[colName] = c;
+    }
+    var gidCol = colByName["GlobalId"];
+    var startCol = colByName["ScheduleStart"];
+    var finishCol = colByName["ScheduleFinish"];
+    if (gidCol === undefined || startCol === undefined || finishCol === undefined) {
+      throw new Error("A aba IfcTaskTime não tem as colunas GlobalId/ScheduleStart/ScheduleFinish.");
+    }
+    var targetRow = -1;
+    for (var r = headerRow + 1; r <= range.e.r; r++) {
+      var gidCell = ws[XLSX.utils.encode_cell({ r: r, c: gidCol })];
+      if (gidCell && String(gidCell.v).trim() === taskTimeGlobalId) {
+        targetRow = r;
+        break;
+      }
+    }
+    if (targetRow === -1) {
+      throw new Error("Linha da tarefa não encontrada na aba IfcTaskTime (GlobalId " + taskTimeGlobalId + ").");
+    }
+    ws[XLSX.utils.encode_cell({ r: targetRow, c: startCol })] = { t: "s", v: startIso };
+    ws[XLSX.utils.encode_cell({ r: targetRow, c: finishCol })] = { t: "s", v: finishIso };
+
+    var out = XLSX.write(wb, { type: "array", bookType: "xlsx" });
+    var writable = await fileHandle.createWritable();
+    await writable.write(out);
+    await writable.close();
+  }
+
+  function _isoDateOnly(d) {
+    var y = d.getFullYear();
+    var m = String(d.getMonth() + 1).padStart(2, "0");
+    var day = String(d.getDate()).padStart(2, "0");
+    return y + "-" + m + "-" + day + "T00:00:00";
+  }
+
+  async function saveTaskDates(task, newStart, newFinish) {
+    if (!task) throw new Error("Nenhuma tarefa selecionada.");
+    var taskTimeGlobalId = task.rawTime ? runtime.getGlobalId(task.rawTime) : "";
+    if (!taskTimeGlobalId) {
+      throw new Error("Esta tarefa não tem um IfcTaskTime vinculado para salvar as datas.");
+    }
+    var startIso = _isoDateOnly(newStart);
+    var finishIso = _isoDateOnly(newFinish);
+
+    await writeScheduleCellsToWorkbook(taskTimeGlobalId, startIso, finishIso);
+
+    // Keep the in-memory JSON-LD node consistent too (task.rawTime is the
+    // very node object living inside runtime.state.graph, not a copy — see
+    // graph_reader.js), so a later runParse() would re-derive the same
+    // values instead of reverting this edit before the next real refresh.
+    task.rawTime[runtime.IBIM_NS + "ScheduleStart"] = [{ "@value": startIso }];
+    task.rawTime[runtime.IBIM_NS + "ScheduleFinish"] = [{ "@value": finishIso }];
+    task.scheduleStart = newStart;
+    task.scheduleFinish = newFinish;
+    var days = runtime.diffDays(newStart, newFinish);
+    if (days < 0) days = 0;
+    if (days === 0) days = 1;
+    task.duration_days = days;
+  }
+  runtime.saveTaskDates = saveTaskDates;
+
+  // ---------------------------------------------------------------------------
+  // Task rename (the pencil icon next to the modal title, task_table_timeline.js)
+  // — same write path as saveTaskDates above, but against the IfcTask sheet's
+  // own Name column (Name lives on the task itself, not on its IfcTaskTime row).
+  // ---------------------------------------------------------------------------
+  async function writeTaskNameToWorkbook(taskGlobalId, newName) {
+    var fileHandle = runtime.state.workbookFileHandle;
+    var wb = runtime.state.workbookSheetJs;
+    if (!fileHandle || !wb) {
+      throw new Error("Nenhuma pasta conectada — conecte o container para salvar.");
+    }
+    if (!window.XLSX || !window.XLSX.utils) {
+      throw new Error("SheetJS indisponível para salvar a planilha.");
+    }
+    var XLSX = window.XLSX;
+    if (wb.SheetNames.indexOf("IfcTask") === -1) {
+      throw new Error("A aba IfcTask não foi encontrada na planilha conectada.");
+    }
+    var ws = wb.Sheets["IfcTask"];
+    var range = XLSX.utils.decode_range(ws["!ref"]);
+    var headerRow = range.s.r;
+    var colByName = {};
+    for (var c = range.s.c; c <= range.e.c; c++) {
+      var headerCell = ws[XLSX.utils.encode_cell({ r: headerRow, c: c })];
+      var colName = (headerCell && headerCell.v !== undefined && headerCell.v !== null)
+        ? String(headerCell.v).trim() : "";
+      if (colName) colByName[colName] = c;
+    }
+    var gidCol = colByName["GlobalId"];
+    var nameCol = colByName["Name"];
+    if (gidCol === undefined || nameCol === undefined) {
+      throw new Error("A aba IfcTask não tem as colunas GlobalId/Name.");
+    }
+    var targetRow = -1;
+    for (var r = headerRow + 1; r <= range.e.r; r++) {
+      var gidCell = ws[XLSX.utils.encode_cell({ r: r, c: gidCol })];
+      if (gidCell && String(gidCell.v).trim() === taskGlobalId) {
+        targetRow = r;
+        break;
+      }
+    }
+    if (targetRow === -1) {
+      throw new Error("Linha da tarefa não encontrada na aba IfcTask (GlobalId " + taskGlobalId + ").");
+    }
+    ws[XLSX.utils.encode_cell({ r: targetRow, c: nameCol })] = { t: "s", v: newName };
+
+    var out = XLSX.write(wb, { type: "array", bookType: "xlsx" });
+    var writable = await fileHandle.createWritable();
+    await writable.write(out);
+    await writable.close();
+  }
+
+  async function saveTaskName(task, newName) {
+    if (!task) throw new Error("Nenhuma tarefa selecionada.");
+    if (!task.globalId) {
+      throw new Error("Esta tarefa não tem um GlobalId para salvar o nome.");
+    }
+    await writeTaskNameToWorkbook(task.globalId, newName);
+
+    // Same reasoning as saveTaskDates: task.raw is the live IfcTask node
+    // inside runtime.state.graph, so patching it here keeps a later
+    // runParse() from reverting the rename before the next real refresh.
+    if (task.raw) {
+      task.raw[runtime.IBIM_NS + "Name"] = [{ "@value": newName }];
+    }
+    task.name = newName;
+  }
+  runtime.saveTaskName = saveTaskName;
+
+  // ---------------------------------------------------------------------------
+  // Task creation (the "+" button in the Page header, task_table_timeline.js)
+  // — appends one new row to IfcTask and one to IfcTaskTime rather than
+  // patching the in-memory graph itself: the caller re-reads the workbook via
+  // refreshFromWorkbook() afterward, which is simpler and safer than hand
+  // -building a JSON-LD node shaped exactly like graph_reader.js expects.
+  // ---------------------------------------------------------------------------
+  function _randomGlobalId() {
+    // Not a byte-perfect compressed-IFC GUID (see ifcopenshell.guid.new()
+    // for that) -- nothing downstream validates the format, only that it
+    // is a unique string, so a plain random token in the same alphabet is
+    // enough and avoids pulling a GUID library into the browser bundle.
+    var alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_$";
+    var bytes = new Uint8Array(22);
+    if (window.crypto && typeof window.crypto.getRandomValues === "function") {
+      window.crypto.getRandomValues(bytes);
+    } else {
+      for (var i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
+    }
+    var out = "";
+    for (var j = 0; j < bytes.length; j++) out += alphabet[bytes[j] % alphabet.length];
+    return out;
+  }
+
+  function _appendRowToSheet(wb, sheetName, valuesByColumn) {
+    var XLSX = window.XLSX;
+    if (wb.SheetNames.indexOf(sheetName) === -1) {
+      throw new Error("A aba " + sheetName + " não foi encontrada na planilha conectada.");
+    }
+    var ws = wb.Sheets[sheetName];
+    var range = XLSX.utils.decode_range(ws["!ref"]);
+    var headerRow = range.s.r;
+    var colByName = {};
+    for (var c = range.s.c; c <= range.e.c; c++) {
+      var headerCell = ws[XLSX.utils.encode_cell({ r: headerRow, c: c })];
+      var colName = (headerCell && headerCell.v !== undefined && headerCell.v !== null)
+        ? String(headerCell.v).trim() : "";
+      if (colName) colByName[colName] = c;
+    }
+    var newRow = range.e.r + 1;
+    var maxCol = range.e.c;
+    var keys = Object.keys(valuesByColumn);
+    for (var k = 0; k < keys.length; k++) {
+      var colName2 = keys[k];
+      var value = valuesByColumn[colName2];
+      if (value === undefined || value === null || value === "") continue;
+      var colIdx = colByName[colName2];
+      if (colIdx === undefined) continue; // sheet doesn't declare this column -- skip it
+      var cellType = typeof value === "boolean" ? "b" : (typeof value === "number" ? "n" : "s");
+      ws[XLSX.utils.encode_cell({ r: newRow, c: colIdx })] = { t: cellType, v: value };
+      if (colIdx > maxCol) maxCol = colIdx;
+    }
+    range.e.r = newRow;
+    if (maxCol > range.e.c) range.e.c = maxCol;
+    ws["!ref"] = XLSX.utils.encode_range(range);
+  }
+
+  async function createTask(fields) {
+    var fileHandle = runtime.state.workbookFileHandle;
+    var wb = runtime.state.workbookSheetJs;
+    if (!fileHandle || !wb) {
+      throw new Error("Nenhuma pasta conectada — conecte o container para salvar.");
+    }
+    if (!window.XLSX || !window.XLSX.utils) {
+      throw new Error("SheetJS indisponível para salvar a planilha.");
+    }
+    var name = String((fields && fields.name) || "").trim();
+    if (!name) {
+      throw new Error("Informe o nome da tarefa.");
+    }
+    var taskGlobalId = _randomGlobalId();
+    var taskTimeGlobalId = _randomGlobalId();
+
+    _appendRowToSheet(wb, "IfcTask", {
+      GlobalId: taskGlobalId,
+      Name: name,
+      IsMilestone: false,
+      TaskTimeGlobalId: taskTimeGlobalId,
+    });
+    _appendRowToSheet(wb, "IfcTaskTime", {
+      GlobalId: taskTimeGlobalId,
+      Name: name,
+      ScheduleStart: (fields && fields.scheduleStart) || undefined,
+      ScheduleFinish: (fields && fields.scheduleFinish) || undefined,
+    });
+
+    var out = window.XLSX.write(wb, { type: "array", bookType: "xlsx" });
+    var writable = await fileHandle.createWritable();
+    await writable.write(out);
+    await writable.close();
+  }
+  runtime.createTask = createTask;
 
   // Reads the connected container's own workbook and returns the schedule,
   // its tasks, their task times and their sequence relations as JSON-LD
@@ -1288,9 +1551,441 @@ json.dumps({
   }
   rt.createSvgEl = createSvgEl;
 
+  // Double-click on a task (its left-table row or its right-panel bar /
+  // milestone diamond) opens this small modal to change ScheduleStart /
+  // ScheduleFinish. Built once and reused across every runRender() pass,
+  // since the tbody/svg elements it hangs its listeners off of are
+  // recreated on every pass but the dialog itself only needs to exist once.
+  var editDialogEl = null;
+  var editDialogStartInput = null;
+  var editDialogFinishInput = null;
+  var editDialogTitleTextEl = null;
+  var editDialogRenameBtn = null;
+  var editDialogTitleInput = null;
+  var editDialogErrorEl = null;
+  var editDialogSaveBtn = null;
+  var editDialogCurrentTask = null;
+  var editDialogRenameSaving = false;
+
+  function ensureEditDialog() {
+    if (editDialogEl) return editDialogEl;
+
+    var dialog = document.createElement("dialog");
+    dialog.className = "onto-gantt-edit-dialog";
+
+    var header = document.createElement("div");
+    header.className = "onto-gantt-edit-dialog-header";
+
+    var titleWrap = document.createElement("h3");
+    titleWrap.className = "onto-gantt-edit-dialog-title";
+    var titleText = document.createElement("span");
+    titleText.className = "onto-gantt-edit-title-text";
+    var renameBtn = document.createElement("button");
+    renameBtn.type = "button";
+    renameBtn.className = "onto-gantt-edit-rename-btn";
+    renameBtn.setAttribute("aria-label", "Renomear");
+    renameBtn.textContent = "✎";
+    var titleInput = document.createElement("input");
+    titleInput.type = "text";
+    titleInput.className = "onto-gantt-edit-title-input";
+    titleInput.style.display = "none";
+    titleWrap.appendChild(titleText);
+    titleWrap.appendChild(renameBtn);
+    titleWrap.appendChild(titleInput);
+
+    var closeBtn = document.createElement("button");
+    closeBtn.type = "button";
+    closeBtn.setAttribute("aria-label", "Fechar");
+    closeBtn.textContent = "×";
+    header.appendChild(titleWrap);
+    header.appendChild(closeBtn);
+
+    function enterRenameMode() {
+      if (!editDialogCurrentTask) return;
+      titleText.style.display = "none";
+      renameBtn.style.display = "none";
+      titleInput.style.display = "";
+      titleInput.value = editDialogCurrentTask.name || "";
+      titleInput.disabled = false;
+      titleInput.focus();
+      titleInput.select();
+    }
+
+    function exitRenameMode() {
+      titleInput.style.display = "none";
+      titleText.style.display = "";
+      renameBtn.style.display = "";
+    }
+
+    renameBtn.addEventListener("click", enterRenameMode);
+
+    titleInput.addEventListener("keydown", function (evt) {
+      if (evt.key === "Enter") {
+        evt.preventDefault();
+        handleRenameSave();
+      } else if (evt.key === "Escape") {
+        evt.preventDefault();
+        exitRenameMode();
+      }
+    });
+    titleInput.addEventListener("blur", function () {
+      if (editDialogRenameSaving) return;
+      exitRenameMode();
+    });
+
+    function handleRenameSave() {
+      var task = editDialogCurrentTask;
+      if (!task) return;
+      var newName = titleInput.value.trim();
+      if (!newName) {
+        showEditDialogError("O nome da tarefa não pode ficar vazio.");
+        return;
+      }
+      if (newName === task.name) {
+        exitRenameMode();
+        return;
+      }
+      if (typeof rt.saveTaskName !== "function") {
+        showEditDialogError("Salvamento indisponível nesta página.");
+        return;
+      }
+      editDialogErrorEl.style.display = "none";
+      editDialogRenameSaving = true;
+      titleInput.disabled = true;
+      Promise.resolve(rt.saveTaskName(task, newName)).then(function () {
+        editDialogRenameSaving = false;
+        titleInput.disabled = false;
+        titleText.textContent = task.name;
+        exitRenameMode();
+        runRender();
+        if (typeof rt.runArrows === "function") rt.runArrows();
+      }).catch(function (err) {
+        editDialogRenameSaving = false;
+        titleInput.disabled = false;
+        titleInput.focus();
+        showEditDialogError((err && err.message) ? err.message : String(err));
+      });
+    }
+
+    var body = document.createElement("div");
+    body.className = "onto-gantt-edit-dialog-body";
+
+    var startLabel = document.createElement("label");
+    startLabel.className = "onto-gantt-edit-field";
+    startLabel.textContent = "Início";
+    var startInput = document.createElement("input");
+    startInput.type = "date";
+    startLabel.appendChild(startInput);
+
+    var finishLabel = document.createElement("label");
+    finishLabel.className = "onto-gantt-edit-field";
+    finishLabel.textContent = "Fim";
+    var finishInput = document.createElement("input");
+    finishInput.type = "date";
+    finishLabel.appendChild(finishInput);
+
+    var errorEl = document.createElement("div");
+    errorEl.className = "onto-gantt-edit-error";
+
+    var footer = document.createElement("div");
+    footer.className = "onto-gantt-edit-dialog-footer";
+    var cancelBtn = document.createElement("button");
+    cancelBtn.type = "button";
+    cancelBtn.className = "onto-gantt-edit-btn onto-gantt-edit-btn-secondary";
+    cancelBtn.textContent = "Cancelar";
+    var saveBtn = document.createElement("button");
+    saveBtn.type = "button";
+    saveBtn.className = "onto-gantt-edit-btn onto-gantt-edit-btn-primary";
+    saveBtn.textContent = "Salvar";
+    footer.appendChild(cancelBtn);
+    footer.appendChild(saveBtn);
+
+    body.appendChild(startLabel);
+    body.appendChild(finishLabel);
+    body.appendChild(errorEl);
+    body.appendChild(footer);
+
+    dialog.appendChild(header);
+    dialog.appendChild(body);
+    document.body.appendChild(dialog);
+
+    function closeDialog() {
+      if (typeof dialog.close === "function") dialog.close();
+      editDialogCurrentTask = null;
+    }
+    closeBtn.addEventListener("click", closeDialog);
+    cancelBtn.addEventListener("click", closeDialog);
+    dialog.addEventListener("cancel", function () { editDialogCurrentTask = null; });
+    saveBtn.addEventListener("click", function () { handleSaveEdit(); });
+
+    editDialogEl = dialog;
+    editDialogStartInput = startInput;
+    editDialogFinishInput = finishInput;
+    editDialogTitleTextEl = titleText;
+    editDialogRenameBtn = renameBtn;
+    editDialogTitleInput = titleInput;
+    editDialogErrorEl = errorEl;
+    editDialogSaveBtn = saveBtn;
+    return dialog;
+  }
+
+  function showEditDialogError(message) {
+    editDialogErrorEl.textContent = message;
+    editDialogErrorEl.style.display = "block";
+  }
+
+  function openEditDialog(task) {
+    if (!task) return;
+    var dialog = ensureEditDialog();
+    editDialogCurrentTask = task;
+    // Reset to display mode in case the dialog was left mid-rename from a
+    // previously opened task.
+    editDialogTitleInput.style.display = "none";
+    editDialogTitleTextEl.style.display = "";
+    editDialogRenameBtn.style.display = "";
+    editDialogTitleTextEl.textContent = task.name || task.identification || "Tarefa";
+    editDialogStartInput.value = rt.formatDate(task.scheduleStart) || "";
+    editDialogFinishInput.value = rt.formatDate(task.scheduleFinish) || "";
+    editDialogErrorEl.textContent = "";
+    editDialogErrorEl.style.display = "none";
+    editDialogSaveBtn.disabled = false;
+    editDialogSaveBtn.textContent = "Salvar";
+    if (typeof dialog.showModal === "function") {
+      dialog.showModal();
+    } else {
+      dialog.setAttribute("open", "open");
+    }
+  }
+  // Exported for tests / manual triggering outside a real dblclick.
+  rt.openGanttTaskEditDialog = openEditDialog;
+
+  function handleSaveEdit() {
+    var task = editDialogCurrentTask;
+    if (!task) return;
+    var startVal = editDialogStartInput.value;
+    var finishVal = editDialogFinishInput.value;
+    if (!startVal || !finishVal) {
+      showEditDialogError("Informe as duas datas.");
+      return;
+    }
+    var newStart = rt.parseDate(startVal);
+    var newFinish = rt.parseDate(finishVal);
+    if (!newStart || !newFinish) {
+      showEditDialogError("Data inválida.");
+      return;
+    }
+    if (newFinish.getTime() < newStart.getTime()) {
+      showEditDialogError("A data de fim não pode ser anterior à data de início.");
+      return;
+    }
+    if (typeof rt.saveTaskDates !== "function") {
+      showEditDialogError("Salvamento indisponível nesta página.");
+      return;
+    }
+    editDialogErrorEl.style.display = "none";
+    editDialogSaveBtn.disabled = true;
+    editDialogSaveBtn.textContent = "Salvando…";
+    Promise.resolve(rt.saveTaskDates(task, newStart, newFinish)).then(function () {
+      editDialogSaveBtn.disabled = false;
+      editDialogSaveBtn.textContent = "Salvar";
+      if (editDialogEl && typeof editDialogEl.close === "function") editDialogEl.close();
+      editDialogCurrentTask = null;
+      runRender();
+      if (typeof rt.runArrows === "function") rt.runArrows();
+    }).catch(function (err) {
+      editDialogSaveBtn.disabled = false;
+      editDialogSaveBtn.textContent = "Salvar";
+      showEditDialogError((err && err.message) ? err.message : String(err));
+    });
+  }
+
+  // The "+" button in the Page header (between the filter and fullscreen
+  // buttons) opens this dialog to register a brand-new task. Unlike the
+  // edit/rename dialogs above, creation doesn't patch enrichedTasks by hand
+  // afterward -- it just asks rt.refreshFromWorkbook() to re-read the
+  // connected folder, the same call the header's own refresh button makes,
+  // so the new row reaches the screen through the exact same parse/render
+  // path every other task already went through.
+  var addTaskDialogEl = null;
+  var addTaskNameInput = null;
+  var addTaskStartInput = null;
+  var addTaskFinishInput = null;
+  var addTaskErrorEl = null;
+  var addTaskSubmitBtn = null;
+
+  function ensureAddTaskDialog() {
+    if (addTaskDialogEl) return addTaskDialogEl;
+
+    var dialog = document.createElement("dialog");
+    dialog.className = "onto-gantt-edit-dialog";
+
+    var header = document.createElement("div");
+    header.className = "onto-gantt-edit-dialog-header";
+    var title = document.createElement("h3");
+    title.className = "onto-gantt-edit-dialog-title";
+    var titleText = document.createElement("span");
+    titleText.className = "onto-gantt-edit-title-text";
+    titleText.textContent = "Nova tarefa";
+    title.appendChild(titleText);
+    var closeBtn = document.createElement("button");
+    closeBtn.type = "button";
+    closeBtn.setAttribute("aria-label", "Fechar");
+    closeBtn.textContent = "×";
+    header.appendChild(title);
+    header.appendChild(closeBtn);
+
+    var body = document.createElement("div");
+    body.className = "onto-gantt-edit-dialog-body";
+
+    var nameLabel = document.createElement("label");
+    nameLabel.className = "onto-gantt-edit-field";
+    nameLabel.textContent = "Nome";
+    var nameInput = document.createElement("input");
+    nameInput.type = "text";
+    nameInput.placeholder = "Nome da tarefa";
+    nameLabel.appendChild(nameInput);
+
+    var startLabel = document.createElement("label");
+    startLabel.className = "onto-gantt-edit-field";
+    startLabel.textContent = "Início";
+    var startInput = document.createElement("input");
+    startInput.type = "date";
+    startLabel.appendChild(startInput);
+
+    var finishLabel = document.createElement("label");
+    finishLabel.className = "onto-gantt-edit-field";
+    finishLabel.textContent = "Fim";
+    var finishInput = document.createElement("input");
+    finishInput.type = "date";
+    finishLabel.appendChild(finishInput);
+
+    var errorEl = document.createElement("div");
+    errorEl.className = "onto-gantt-edit-error";
+
+    var footer = document.createElement("div");
+    footer.className = "onto-gantt-edit-dialog-footer";
+    var cancelBtn = document.createElement("button");
+    cancelBtn.type = "button";
+    cancelBtn.className = "onto-gantt-edit-btn onto-gantt-edit-btn-secondary";
+    cancelBtn.textContent = "Cancelar";
+    var submitBtn = document.createElement("button");
+    submitBtn.type = "button";
+    submitBtn.className = "onto-gantt-edit-btn onto-gantt-edit-btn-primary";
+    submitBtn.textContent = "Adicionar";
+    footer.appendChild(cancelBtn);
+    footer.appendChild(submitBtn);
+
+    body.appendChild(nameLabel);
+    body.appendChild(startLabel);
+    body.appendChild(finishLabel);
+    body.appendChild(errorEl);
+    body.appendChild(footer);
+
+    dialog.appendChild(header);
+    dialog.appendChild(body);
+    document.body.appendChild(dialog);
+
+    function closeDialog() {
+      if (typeof dialog.close === "function") dialog.close();
+    }
+    closeBtn.addEventListener("click", closeDialog);
+    cancelBtn.addEventListener("click", closeDialog);
+    nameInput.addEventListener("keydown", function (evt) {
+      if (evt.key === "Enter") {
+        evt.preventDefault();
+        handleCreateTask();
+      }
+    });
+    submitBtn.addEventListener("click", function () { handleCreateTask(); });
+
+    addTaskDialogEl = dialog;
+    addTaskNameInput = nameInput;
+    addTaskStartInput = startInput;
+    addTaskFinishInput = finishInput;
+    addTaskErrorEl = errorEl;
+    addTaskSubmitBtn = submitBtn;
+    return dialog;
+  }
+
+  function showAddTaskError(message) {
+    addTaskErrorEl.textContent = message;
+    addTaskErrorEl.style.display = "block";
+  }
+
+  function openAddTaskDialog() {
+    var dialog = ensureAddTaskDialog();
+    addTaskNameInput.value = "";
+    addTaskStartInput.value = "";
+    addTaskFinishInput.value = "";
+    addTaskErrorEl.textContent = "";
+    addTaskErrorEl.style.display = "none";
+    addTaskSubmitBtn.disabled = false;
+    addTaskSubmitBtn.textContent = "Adicionar";
+    if (typeof dialog.showModal === "function") {
+      dialog.showModal();
+    } else {
+      dialog.setAttribute("open", "open");
+    }
+    addTaskNameInput.focus();
+  }
+  // Exported for tests / manual triggering outside a real click.
+  rt.openGanttAddTaskDialog = openAddTaskDialog;
+
+  function handleCreateTask() {
+    var name = addTaskNameInput.value.trim();
+    if (!name) {
+      showAddTaskError("Informe o nome da tarefa.");
+      return;
+    }
+    var startVal = addTaskStartInput.value;
+    var finishVal = addTaskFinishInput.value;
+    if (startVal && finishVal) {
+      var start = rt.parseDate(startVal);
+      var finish = rt.parseDate(finishVal);
+      if (start && finish && finish.getTime() < start.getTime()) {
+        showAddTaskError("A data de fim não pode ser anterior à data de início.");
+        return;
+      }
+    }
+    if (typeof rt.createTask !== "function" || typeof rt.refreshFromWorkbook !== "function") {
+      showAddTaskError("Cadastro indisponível nesta página.");
+      return;
+    }
+    addTaskErrorEl.style.display = "none";
+    addTaskSubmitBtn.disabled = true;
+    addTaskSubmitBtn.textContent = "Adicionando…";
+    Promise.resolve(rt.createTask({
+      name: name,
+      scheduleStart: startVal ? startVal + "T00:00:00" : undefined,
+      scheduleFinish: finishVal ? finishVal + "T00:00:00" : undefined,
+    })).then(function () {
+      return rt.refreshFromWorkbook();
+    }).then(function () {
+      addTaskSubmitBtn.disabled = false;
+      addTaskSubmitBtn.textContent = "Adicionar";
+      if (addTaskDialogEl && typeof addTaskDialogEl.close === "function") addTaskDialogEl.close();
+    }).catch(function (err) {
+      addTaskSubmitBtn.disabled = false;
+      addTaskSubmitBtn.textContent = "Adicionar";
+      showAddTaskError((err && err.message) ? err.message : String(err));
+    });
+  }
+
+  function wireAddTaskButton() {
+    var btn = document.querySelector(".gantt-add-task-btn");
+    if (!btn || btn.dataset.ontobdcWired === "true") return;
+    btn.dataset.ontobdcWired = "true";
+    btn.addEventListener("click", openAddTaskDialog);
+  }
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", wireAddTaskButton);
+  } else {
+    wireAddTaskButton();
+  }
+
   function runRender() {
     var FALLBACK_HEADER_HEIGHT = 72;
-    var FALLBACK_ROW_HEIGHT = 40;
+    var FALLBACK_ROW_HEIGHT = 34;
     var FALLBACK_TICK_WIDTH_DAY = 28;
     var FALLBACK_MILLIS_PER_DAY = 86400000;
     var _hdr = Number(rt.HEADER_HEIGHT);
@@ -1347,9 +2042,14 @@ json.dumps({
     var totalDays = Math.ceil((maxDate.getTime() - minDate.getTime()) / Math.max(1, numOr(rt.MILLIS_PER_DAY, 86400000))) + 1;
     if (!isFinite(totalDays) || totalDays < 1) totalDays = 31;
     var svgWidth = Math.max(800, numOr(totalDays, 31) * numOr(rt.TICK_WIDTH_DAY, 28));
-    var svgHeight = numOr(rt.HEADER_HEIGHT, 72) + enrichedTasks.length * numOr(rt.ROW_HEIGHT, 40);
+    // No +HEADER_HEIGHT here: #gantt-timeline-header is a separate sibling
+    // <div> (see the .html.j2 template) that already reserves its own
+    // 72px in normal block flow above #gantt-svg — adding HEADER_HEIGHT a
+    // second time *inside* the svg's own coordinate system just pushed
+    // every row down by a redundant extra header's worth of blank space.
+    var svgHeight = enrichedTasks.length * numOr(rt.ROW_HEIGHT, 34);
     if (!isFinite(svgWidth) || isNaN(svgWidth) || svgWidth < 0) svgWidth = 800;
-    if (!isFinite(svgHeight) || isNaN(svgHeight) || svgHeight < numOr(rt.HEADER_HEIGHT, 72)) svgHeight = numOr(rt.HEADER_HEIGHT, 72) + numOr(rt.ROW_HEIGHT, 40);
+    if (!isFinite(svgHeight) || isNaN(svgHeight) || svgHeight < 0) svgHeight = numOr(rt.ROW_HEIGHT, 34);
     rt.state.minDate = minDate;
     rt.state.maxDate = maxDate;
     rt.state.totalDays = totalDays;
@@ -1392,6 +2092,10 @@ json.dumps({
         tr.appendChild(tdFinish);
         tr.appendChild(tdDuration);
         tr.appendChild(tdCompletion);
+        tr.style.cursor = "pointer";
+        (function (taskRef) {
+          tr.addEventListener("dblclick", function () { openEditDialog(taskRef); });
+        })(task2);
         tbody.appendChild(tr);
       }
     }
@@ -1399,9 +2103,9 @@ json.dumps({
     var svg = document.getElementById("gantt-svg");
     var timelineHeader = document.getElementById("gantt-timeline-header");
     if (svg) {
-      svg.setAttribute("viewBox", "0 0 " + numOr(svgWidth, 800) + " " + numOr(svgHeight, rt.HEADER_HEIGHT + rt.ROW_HEIGHT));
+      svg.setAttribute("viewBox", "0 0 " + numOr(svgWidth, 800) + " " + numOr(svgHeight, rt.ROW_HEIGHT));
       setSvgAttr(svg, "width", svgWidth, 800);
-      setSvgAttr(svg, "height", svgHeight, rt.HEADER_HEIGHT + rt.ROW_HEIGHT);
+      setSvgAttr(svg, "height", svgHeight, rt.ROW_HEIGHT);
     }
 
     var taskIndexByGlobalId = {};
@@ -1415,7 +2119,7 @@ json.dumps({
     var taskBarData = [];
     for (var n = 0; n < enrichedTasks.length; n++) {
       var task3 = enrichedTasks[n];
-      var rowY = numOr(rt.HEADER_HEIGHT + n * rt.ROW_HEIGHT, rt.HEADER_HEIGHT);
+      var rowY = numOr(n * rt.ROW_HEIGHT, 0);
       var startOffsetDays = task3.scheduleStart ? (task3.scheduleStart.getTime() - minDate.getTime()) / rt.MILLIS_PER_DAY : 0;
       var barX = numOr(startOffsetDays * rt.TICK_WIDTH_DAY + 6, 6);
       var durationDays = Math.max(0.25, isFinite(task3.duration_days) ? task3.duration_days : 1);
@@ -1438,9 +2142,9 @@ json.dumps({
         var isMajor = d % 7 === 0;
         var line = createSvgEl("line", {
           x1: numOr(x, 0),
-          y1: numOr(rt.HEADER_HEIGHT, 72),
+          y1: 0,
           x2: numOr(x, 0),
-          y2: numOr(svgHeight, rt.HEADER_HEIGHT + rt.ROW_HEIGHT),
+          y2: numOr(svgHeight, rt.ROW_HEIGHT),
           class: isMajor ? "gantt-grid-col-major" : "gantt-grid-col"
         });
         svg.appendChild(line);
@@ -1455,10 +2159,10 @@ json.dumps({
       var todayIndexExact2 = diffMs2 / msPerDay2;
       if (todayIndexExact2 >= -1 && todayIndexExact2 <= (totalDays + 1)) {
         var todayX2 = todayIndexExact2 * rt.TICK_WIDTH_DAY + rt.TICK_WIDTH_DAY / 2;
-        var todayTotalH = Math.max(rt.ROW_HEIGHT * Math.max(4, enrichedTasks.length + 2), svgHeight - rt.HEADER_HEIGHT);
+        var todayTotalH = Math.max(rt.ROW_HEIGHT * Math.max(4, enrichedTasks.length + 2), svgHeight);
         var todayRect2 = createSvgEl("rect", {
           x: numOr(todayX2 - 1, 0),
-          y: numOr(rt.HEADER_HEIGHT, 72),
+          y: 0,
           width: 2,
           height: numOr(todayTotalH, rt.ROW_HEIGHT * 4),
           class: "gantt-today-line"
@@ -1469,12 +2173,12 @@ json.dumps({
         }
       }
       for (var p = 0; p <= enrichedTasks.length; p++) {
-        var y = numOr(rt.HEADER_HEIGHT + p * rt.ROW_HEIGHT, numOr(rt.HEADER_HEIGHT, 72));
+        var y = numOr(p * rt.ROW_HEIGHT, 0);
         var rowLine = createSvgEl("line", {
           x1: 0,
-          y1: numOr(y, numOr(rt.HEADER_HEIGHT, 72)),
+          y1: numOr(y, 0),
           x2: numOr(svgWidth, 800),
-          y2: numOr(y, numOr(rt.HEADER_HEIGHT, 72)),
+          y2: numOr(y, 0),
           class: "gantt-row-line"
         });
         svg.appendChild(rowLine);
@@ -1575,27 +2279,33 @@ json.dumps({
         var barWidth2 = data.barWidth;
         var isMilestone2 = data.isMilestone;
         var task4 = data.task;
-        var centerY = numOr(rowY2, numOr(rt.HEADER_HEIGHT, 72)) + numOr(rt.ROW_HEIGHT, 40) / 2;
+        var centerY = numOr(rowY2, 0) + numOr(rt.ROW_HEIGHT, 34) / 2;
         var centerX = numOr(barX2, 6) + numOr(barWidth2, numOr(rt.TICK_WIDTH_DAY, 28) / 2) / 2;
 
         if (isMilestone2) {
           var size = 10;
           var pts = [
-            [numOr(centerX, 0), numOr(centerY, numOr(rt.HEADER_HEIGHT, 72)) - size],
-            [numOr(centerX, 0) + size, numOr(centerY, numOr(rt.HEADER_HEIGHT, 72))],
-            [numOr(centerX, 0), numOr(centerY, numOr(rt.HEADER_HEIGHT, 72)) + size],
-            [numOr(centerX, 0) - size, numOr(centerY, numOr(rt.HEADER_HEIGHT, 72))]
+            [numOr(centerX, 0), numOr(centerY, 0) - size],
+            [numOr(centerX, 0) + size, numOr(centerY, 0)],
+            [numOr(centerX, 0), numOr(centerY, 0) + size],
+            [numOr(centerX, 0) - size, numOr(centerY, 0)]
           ].map(function (pair) { return pair.join(","); }).join(" ");
           var diamond = createSvgEl("polygon", {
             points: pts,
             class: "gantt-marker-diamond"
           });
           svg.appendChild(diamond);
+          (function (taskRef) {
+            diamond.addEventListener("dblclick", function (evt) {
+              if (evt && typeof evt.stopPropagation === "function") evt.stopPropagation();
+              openEditDialog(taskRef);
+            });
+          })(task4);
 
           if (task4.name && barWidth2 > 20) {
             var textMil = createSvgEl("text", {
               x: numOr(centerX, 0) + size + 4,
-              y: numOr(centerY, numOr(rt.HEADER_HEIGHT, 72)) + 4,
+              y: numOr(centerY, 0) + 4,
               class: "gantt-bar-text"
             });
             textMil.textContent = task4.name;
@@ -1606,20 +2316,26 @@ json.dumps({
           if (task4.isCritical) barClasses.push("gantt-bar-critical");
           var bar = createSvgEl("rect", {
             x: numOr(barX2, 6),
-            y: numOr(rowY2, numOr(rt.HEADER_HEIGHT, 72)) + 6,
+            y: numOr(rowY2, 0) + 6,
             width: numOr(barWidth2, numOr(rt.TICK_WIDTH_DAY, 28) / 2),
-            height: Math.max(0, numOr(rt.ROW_HEIGHT, 40) - 12),
+            height: Math.max(0, numOr(rt.ROW_HEIGHT, 34) - 12),
             class: barClasses.join(" ")
           });
           svg.appendChild(bar);
+          (function (taskRef) {
+            bar.addEventListener("dblclick", function (evt) {
+              if (evt && typeof evt.stopPropagation === "function") evt.stopPropagation();
+              openEditDialog(taskRef);
+            });
+          })(task4);
 
           if (task4.completion > 0) {
             var progressWidth = Math.max(0, (numOr(barWidth2, numOr(rt.TICK_WIDTH_DAY, 28) / 2) * task4.completion) / 100);
             var progress = createSvgEl("rect", {
               x: numOr(barX2, 6),
-              y: numOr(rowY2, numOr(rt.HEADER_HEIGHT, 72)) + 6,
+              y: numOr(rowY2, 0) + 6,
               width: progressWidth,
-              height: Math.max(0, numOr(rt.ROW_HEIGHT, 40) - 12),
+              height: Math.max(0, numOr(rt.ROW_HEIGHT, 34) - 12),
               class: "gantt-bar-progress"
             });
             svg.appendChild(progress);
@@ -1628,7 +2344,7 @@ json.dumps({
           if (task4.name && barWidth2 > 60) {
             var textBar = createSvgEl("text", {
               x: numOr(barX2, 6) + 4,
-              y: numOr(rowY2, numOr(rt.HEADER_HEIGHT, 72)) + 17,
+              y: numOr(rowY2, 0) + 17,
               class: "gantt-bar-text"
             });
             var maxChars = Math.floor(barWidth2 / 6);
@@ -1698,7 +2414,7 @@ json.dumps({
     if (isFinite(fb) && !isNaN(fb)) return fb;
     return 0;
   }
-  if (!rt.ROW_HEIGHT || !isFinite(Number(rt.ROW_HEIGHT))) rt.ROW_HEIGHT = 40;
+  if (!rt.ROW_HEIGHT || !isFinite(Number(rt.ROW_HEIGHT))) rt.ROW_HEIGHT = 34;
 
   function resolveSequenceGlobalId(ref) {
     if (!ref) return "";
