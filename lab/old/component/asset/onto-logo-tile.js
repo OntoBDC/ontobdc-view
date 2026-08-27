@@ -55,19 +55,15 @@ class OntoLogoTile extends HTMLElement {
         .mark {
           color: var(--onto-theme-accent, var(--onto-theme-foreground, currentColor));
         }
-        .mark svg,
-        .mark img {
+        .mark svg {
           inline-size: min(72cqw, 72cqh, 58px);
           block-size: min(72cqw, 72cqh, 58px);
           display: block;
-          object-fit: contain;
         }
-        .logotype svg,
-        .logotype img {
+        .logotype svg {
           inline-size: min(92cqw, 100%);
           block-size: min(70cqh, 72px);
           display: block;
-          object-fit: contain;
         }
         .with-slogan {
           inline-size: 100%;

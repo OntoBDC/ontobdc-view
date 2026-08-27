@@ -1,5 +1,6 @@
 
 
+import base64
 import json
 from importlib.resources import files
 from pathlib import Path
@@ -104,6 +105,40 @@ def _read_text_if_svg(path: Path) -> Optional[str]:
             return raw.decode("utf-8", errors="replace")
         except Exception:
             return None
+
+
+def _read_img_markup_if_png(path: Path) -> Optional[str]:
+    """Return an inline ``<img>`` tag embedding ``path`` if it is a PNG.
+
+    The Tile injects ``mark_svg``/``logotype_svg`` as raw markup (see
+    ``onto-logo-tile.js``), so a PNG fallback must arrive already wrapped
+    in a tag the Tile can drop straight into its shadow DOM -- a base64
+    data URI keeps the asset self-contained, matching inline SVG markup.
+    """
+    try:
+        if not path.is_file():
+            return None
+        raw = path.read_bytes()
+    except (OSError, ValueError):
+        return None
+    if raw[:8] != b"\x89PNG\r\n\x1a\n":
+        return None
+    encoded = base64.b64encode(raw).decode("ascii")
+    return f'<img src="data:image/png;base64,{encoded}" alt="" />'
+
+
+def _read_brand_asset_markup(assets: Path, svg_filename: str) -> Optional[str]:
+    """Resolve renderable markup for a brand asset, SVG first, PNG second.
+
+    ``svg_filename`` is the canonical ``*.svg`` name for the asset (e.g.
+    ``"OntoBDCBrand.svg"``). When that file is absent or invalid, the same
+    basename with a ``.png`` extension is tried instead.
+    """
+    svg_markup = _read_text_if_svg(assets / svg_filename)
+    if svg_markup is not None:
+        return svg_markup.strip()
+    png_path = (assets / svg_filename).with_suffix(".png")
+    return _read_img_markup_if_png(png_path)
 
 
 def _candidate_brand_roots(root_path: Optional[str]) -> List[Path]:
@@ -213,7 +248,10 @@ def _candidate_brand_roots(root_path: Optional[str]) -> List[Path]:
 
 
 def _resolve_brand_from_assets(root_path: Optional[str]) -> Optional[Dict[str, str]]:
-    """Look for branding SVGs that `surface_branded` already downloaded.
+    """Look for branding assets that `surface_branded` already downloaded.
+
+    Each asset is looked up as SVG first, falling back to a same-named
+    ``.png`` file when no SVG is present (see ``_read_brand_asset_markup``).
 
     No coupling to that capability exists here: we simply scan the two
     canonical project hidden directories (``.__infobim__`` first because
@@ -251,14 +289,14 @@ def _resolve_brand_from_assets(root_path: Optional[str]) -> Optional[Dict[str, s
                 if not marker.is_dir():
                     continue
                 assets = marker / asset_dir
-                brand_svg = _read_text_if_svg(assets / brand_file)
-                logotype_svg = _read_text_if_svg(assets / logotype_file)
-                if brand_svg is None or logotype_svg is None:
+                brand_markup = _read_brand_asset_markup(assets, brand_file)
+                logotype_markup = _read_brand_asset_markup(assets, logotype_file)
+                if brand_markup is None or logotype_markup is None:
                     continue
                 return {
                     "name": name,
-                    "mark_svg": brand_svg.strip(),
-                    "logotype_svg": logotype_svg.strip(),
+                    "mark_svg": brand_markup,
+                    "logotype_svg": logotype_markup,
                     "slogan": slogan,
                 }
     return None

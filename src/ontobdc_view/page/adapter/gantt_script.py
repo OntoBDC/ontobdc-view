@@ -9,6 +9,10 @@ from .container import (
 
 from typing import Callable, Dict
 
+from ontobdc_view.shared.adapter.vendor import (
+    VENDOR_SHEET_JS_NAME,
+    vendor_asset_source,
+)
 from ontobdc_view.shared.domain.port.gantt_script import GanttScriptPort
 
 
@@ -33,6 +37,13 @@ class GanttScriptAdapter(GanttScriptPort):
     """
 
     _BUILDERS: Dict[str, Callable[["GanttScriptAdapter"], str]] = {
+        # The Page loads the vendored SheetJS build by name like any other
+        # runtime file, so it resolves here like any other: a name the Page
+        # lists but this adapter cannot produce is a runtime that goes
+        # missing at load time with nothing failing at build time.
+        VENDOR_SHEET_JS_NAME: lambda self: vendor_asset_source(
+            VENDOR_SHEET_JS_NAME
+        ),
         "i18n_apply": lambda self: self._i18n_apply_source(),
         "graph_reader": lambda self: self._graph_reader_source(),
         "container_connection": lambda self: container_connection_source(
