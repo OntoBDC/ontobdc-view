@@ -102,7 +102,14 @@ _CONTAINER_CONNECTION_TEMPLATE = r"""(function (window) {
     return text;
   };
   if (typeof runtime.t !== "function") runtime.t = __ontobdcIdentityT;
-  var t = (typeof runtime.t === "function") ? runtime.t : __ontobdcIdentityT;
+  // Resolve runtime.t lazily: on the Gantt Page the loader inserts every
+  // runtime script at once, so this IIFE can execute before i18n_apply.js has
+  // attached the real translator. A captured reference would freeze to the
+  // identity fallback and user-facing strings would show as raw i18n keys.
+  var t = function t(key, vars) {
+    var fn = (typeof runtime.t === "function") ? runtime.t : __ontobdcIdentityT;
+    return fn(key, vars);
+  };
   var WORKSTREAM_PAYLOAD = runtime.WORKSTREAM_PAYLOAD;
 
   const HANDLE_DB_NAME = "__HANDLE_DB__";
@@ -164,24 +171,26 @@ _CONTAINER_CONNECTION_TEMPLATE = r"""(function (window) {
       const name = resource && resource.name;
       return typeof name === "string" && name === WORK_STREAM_RESOURCE_NAME;
     });
-    if (hasExactNamedResource) {
-      return true;
-    }
-    return true;
+    return hasExactNamedResource;
   }
 
   async function resolveContainerHandle(selectedHandle) {
     if (await isContainerHandle(selectedHandle)) {
+      if (runtime.state.datasetHandle !== selectedHandle) {
+        runtime.state.datasetRelPath = "";
+      }
       return selectedHandle;
     }
 
-    const queue = [selectedHandle];
+    const queue = [{ handle: selectedHandle, relPath: "" }];
     const visited = new Set();
     const matches = [];
     const maxVisits = 2000;
 
     while (queue.length > 0 && visited.size < maxVisits && matches.length <= 2) {
-      const current = queue.shift();
+      const currentItem = queue.shift();
+      const current = currentItem && currentItem.handle;
+      const currentRelPath = currentItem ? currentItem.relPath : "";
       if (!current || visited.has(current)) {
         continue;
       }
@@ -199,9 +208,15 @@ _CONTAINER_CONNECTION_TEMPLATE = r"""(function (window) {
             continue;
           }
           if (await isContainerHandle(entry)) {
-            matches.push(entry);
+            matches.push({
+              handle: entry,
+              relPath: [currentRelPath, name].filter(Boolean).join("/"),
+            });
           } else {
-            queue.push(entry);
+            queue.push({
+              handle: entry,
+              relPath: [currentRelPath, name].filter(Boolean).join("/"),
+            });
           }
         }
       } catch (error) {
@@ -213,7 +228,8 @@ _CONTAINER_CONNECTION_TEMPLATE = r"""(function (window) {
     }
 
     if (matches.length === 1) {
-      return matches[0];
+      runtime.state.datasetRelPath = matches[0].relPath;
+      return matches[0].handle;
     }
     if (matches.length > 1) {
       throw new Error(
@@ -538,9 +554,6 @@ _CONTAINER_CONNECTION_TEMPLATE = r"""(function (window) {
       }
       if (refreshBtn) {
         refreshBtn.disabled = !runtime.state.rawContainerHandle;
-        if (runtime.state.rawContainerHandle && !refreshBtn.textContent) {
-          refreshBtn.textContent = t("refreshFromWorkbook");
-        }
       }
     }
   }
@@ -581,7 +594,14 @@ _CONNECTION_STATE_TEMPLATE = r"""(function (window) {
     return text;
   };
   if (typeof runtime.t !== "function") runtime.t = __ontobdcIdentityT;
-  var t = (typeof runtime.t === "function") ? runtime.t : __ontobdcIdentityT;
+  // Resolve runtime.t lazily: on the Gantt Page the loader inserts every
+  // runtime script at once, so this IIFE can execute before i18n_apply.js has
+  // attached the real translator. A captured reference would freeze to the
+  // identity fallback and user-facing strings would show as raw i18n keys.
+  var t = function t(key, vars) {
+    var fn = (typeof runtime.t === "function") ? runtime.t : __ontobdcIdentityT;
+    return fn(key, vars);
+  };
   var WORKSTREAM_PAYLOAD = runtime.WORKSTREAM_PAYLOAD;
   var loadStoredHandle = runtime.loadStoredHandle;
   var openContainer = runtime.openContainer;
@@ -607,6 +627,83 @@ _CONNECTION_STATE_TEMPLATE = r"""(function (window) {
     );
   }
 
+  const SURFACE_REGENERATION_REQUEST_FILE = "surface-regeneration.request.json";
+
+  async function requestSurfaceRegeneration(reason) {
+    const rootHandle = runtime.state.rawContainerHandle || runtime.state.datasetHandle;
+    if (!rootHandle) return false;
+    const metadata = await rootHandle.getDirectoryHandle(".__ontobdc__", {
+      create: true,
+    });
+    const requestHandle = await metadata.getFileHandle(
+      SURFACE_REGENERATION_REQUEST_FILE,
+      { create: true },
+    );
+    const writable = await requestHandle.createWritable();
+    await writable.write(JSON.stringify({
+      requestedAt: new Date().toISOString(),
+      reason: String(reason || "workbook_changed"),
+      nonce: Math.random().toString(36).slice(2),
+    }));
+    await writable.close();
+    return true;
+  }
+
+  function scheduleSurfaceRegeneration(reason) {
+    Promise.resolve()
+      .then(function () { return requestSurfaceRegeneration(reason); })
+      .catch(function (error) {
+        console.warn("Could not request background Surface regeneration:", error);
+      });
+  }
+
+  function setProjectActionsDisabled(disabled) {
+    runtime.state.projectActionsDisabled = Boolean(disabled);
+    var actions = document.querySelectorAll("button:not(.connect-btn)");
+    for (var index = 0; index < actions.length; index++) {
+      actions[index].disabled = Boolean(disabled);
+    }
+  }
+
+  function wireProjectActionGate() {
+    if (
+      runtime.projectActionGateObserver ||
+      !document.body
+    ) return;
+    runtime.projectActionGateObserver = new MutationObserver(function (records) {
+      if (!runtime.state.projectActionsDisabled) return;
+      for (var recordIndex = 0; recordIndex < records.length; recordIndex++) {
+        var nodes = records[recordIndex].addedNodes || [];
+        for (var nodeIndex = 0; nodeIndex < nodes.length; nodeIndex++) {
+          var node = nodes[nodeIndex];
+          if (!node || node.nodeType !== 1) continue;
+          if (node.matches && node.matches("button:not(.connect-btn)")) {
+            node.disabled = true;
+          }
+          if (node.querySelectorAll) {
+            var nested = node.querySelectorAll("button:not(.connect-btn)");
+            for (var nestedIndex = 0; nestedIndex < nested.length; nestedIndex++) {
+              nested[nestedIndex].disabled = true;
+            }
+          }
+        }
+      }
+    });
+    runtime.projectActionGateObserver.observe(document.body, {
+      childList: true,
+      subtree: true,
+    });
+    setProjectActionsDisabled(!runtime.state.rawContainerHandle);
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", wireProjectActionGate, {
+      once: true,
+    });
+  } else {
+    wireProjectActionGate();
+  }
+
   function setConnected(rawHandle, resolvedDatasetHandle) {
     var setConnectButtonLabel = runtime.setConnectButtonLabel;
     runtime.state.rawContainerHandle = rawHandle;
@@ -614,15 +711,14 @@ _CONNECTION_STATE_TEMPLATE = r"""(function (window) {
     setConnectButtonLabel(t("connectedFolder"));
     var connectBtn = document.querySelector(".connect-btn");
     if (connectBtn) connectBtn.disabled = false;
-    const workspaceBtnConnected = document.querySelector(".workspace-btn");
-    if (workspaceBtnConnected) workspaceBtnConnected.disabled = false;
-    var subjectsBtn = document.querySelector(".subjects-btn");
-    if (subjectsBtn) subjectsBtn.disabled = false;
+    setProjectActionsDisabled(false);
     const refreshBtn = document.querySelector(".refresh-btn");
     if (refreshBtn && WORKSTREAM_PAYLOAD) {
       refreshBtn.disabled = false;
       refreshBtn.hidden = false;
     }
+    // Gantt-only: the "+" new-task button stays disabled until a folder is
+    // connected, since createTask() writes straight into that workbook.
     setConnectionStatus("connected");
   }
 
@@ -631,9 +727,12 @@ _CONNECTION_STATE_TEMPLATE = r"""(function (window) {
     const button = document.querySelector(".connect-btn");
     setConnectButtonLabel(message);
     if (button) button.disabled = false;
+    if (!runtime.state.rawContainerHandle) setProjectActionsDisabled(true);
     setConnectionStatus("error");
     setTimeout(() => {
-      if (!runtime.state.rawContainerHandle) setConnectButtonLabel(fallbackLabel);
+      setConnectButtonLabel(
+        runtime.state.rawContainerHandle ? t("connectedFolder") : fallbackLabel
+      );
       setConnectionStatus(runtime.state.rawContainerHandle ? "connected" : "idle");
     }, 4000);
   }
@@ -655,6 +754,7 @@ _CONNECTION_STATE_TEMPLATE = r"""(function (window) {
     try {
       const permission = await handle.queryPermission({ mode: "readwrite" });
       if (permission !== "granted") {
+        setProjectActionsDisabled(true);
         setConnectButtonLabel(t("allowFolderAccess"));
         setConnectionStatus("idle");
         return;
@@ -665,6 +765,7 @@ _CONNECTION_STATE_TEMPLATE = r"""(function (window) {
       // Explicitly NOT fake-setting the button as connected. On any
       // failure the label says "Conectar pasta" and user clicks themselves.
       setConnectButtonLabel(t("connectFolder"));
+      setProjectActionsDisabled(true);
       setConnectionStatus("idle");
     }
   }
@@ -686,6 +787,10 @@ _CONNECTION_STATE_TEMPLATE = r"""(function (window) {
     setConnected: setConnected,
     setConnectError: setConnectError,
     setConnectionStatus: setConnectionStatus,
+    requestSurfaceRegeneration: requestSurfaceRegeneration,
+    scheduleSurfaceRegeneration: scheduleSurfaceRegeneration,
+    setProjectActionsDisabled: setProjectActionsDisabled,
+    wireProjectActionGate: wireProjectActionGate,
     ONTOBDC_CONNECTION_STATUS_EVENT: ONTOBDC_CONNECTION_STATUS_EVENT,
     tryReconnectSilentlyImpl: tryReconnectSilentlyImpl,
     tryReconnectSilently: tryReconnectSilently
@@ -712,9 +817,124 @@ _CHROME_CONTROLS_TEMPLATE = r"""(function (window) {
     return text;
   };
   if (typeof runtime.t !== "function") runtime.t = __ontobdcIdentityT;
-  var t = (typeof runtime.t === "function") ? runtime.t : __ontobdcIdentityT;
+  // Resolve runtime.t lazily: on the Gantt Page the loader inserts every
+  // runtime script at once, so this IIFE can execute before i18n_apply.js has
+  // attached the real translator. A captured reference would freeze to the
+  // identity fallback and user-facing strings would show as raw i18n keys.
+  var t = function t(key, vars) {
+    var fn = (typeof runtime.t === "function") ? runtime.t : __ontobdcIdentityT;
+    return fn(key, vars);
+  };
   var openContainer = runtime.openContainer;
   var setConnectButtonLabel = runtime.setConnectButtonLabel;
+
+  var INLINE_EDIT_ICONS = {
+    edit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>',
+    save: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></svg>',
+    cancel: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m18 6-12 12"/><path d="m6 6 12 12"/></svg>'
+  };
+
+  function mountInlineEditor(host, options) {
+    if (!host) return null;
+    var config = options || {};
+    var currentValue = String(config.value == null ? "" : config.value);
+    var editing = false;
+    var saving = false;
+
+    function label(name, fallback) {
+      var value = config[name];
+      return typeof value === "function" ? value() : String(value || fallback);
+    }
+
+    function iconButton(kind, title, handler) {
+      var button = document.createElement("button");
+      button.type = "button";
+      button.className = "onto-inline-edit-btn onto-inline-edit-btn--" + kind;
+      button.title = title;
+      button.setAttribute("aria-label", title);
+      button.innerHTML = INLINE_EDIT_ICONS[kind];
+      button.addEventListener("click", handler);
+      return button;
+    }
+
+    function render() {
+      host.innerHTML = "";
+      host.classList.add("onto-inline-edit");
+      var error = document.createElement("div");
+      error.className = "onto-inline-edit-error";
+
+      if (!editing) {
+        var value = document.createElement(config.multiline ? "div" : "span");
+        value.className = "onto-inline-edit-value";
+        value.textContent = currentValue || label("emptyLabel", "—");
+        if (!currentValue) value.classList.add("is-empty");
+        var actions = document.createElement("span");
+        actions.className = "onto-inline-edit-actions";
+        actions.appendChild(iconButton("edit", label("editLabel", "Edit"), function () {
+          editing = true;
+          render();
+        }));
+        host.append(value, actions, error);
+        return;
+      }
+
+      var input = document.createElement(config.multiline ? "textarea" : "input");
+      if (!config.multiline) input.type = "text";
+      input.className = "onto-inline-edit-input";
+      input.value = currentValue;
+      if (config.rows) input.rows = config.rows;
+      var editActions = document.createElement("span");
+      editActions.className = "onto-inline-edit-actions";
+      var saveButton = iconButton("save", label("saveLabel", "Save"), async function () {
+        var nextValue = input.value.trim();
+        if (config.required && !nextValue) {
+          error.textContent = label("requiredMessage", "This value is required.");
+          error.hidden = false;
+          input.focus();
+          return;
+        }
+        saving = true;
+        input.disabled = true;
+        saveButton.disabled = true;
+        cancelButton.disabled = true;
+        host.classList.add("is-saving");
+        try {
+          if (typeof config.onSave === "function") await config.onSave(nextValue);
+          currentValue = nextValue;
+          editing = false;
+          render();
+        } catch (caught) {
+          saving = false;
+          input.disabled = false;
+          saveButton.disabled = false;
+          cancelButton.disabled = false;
+          host.classList.remove("is-saving");
+          error.textContent = caught && caught.message ? caught.message : String(caught);
+          error.hidden = false;
+          input.focus();
+        }
+      });
+      var cancelButton = iconButton("cancel", label("cancelLabel", "Cancel"), function () {
+        if (saving) return;
+        editing = false;
+        render();
+      });
+      editActions.append(saveButton, cancelButton);
+      host.append(input, editActions, error);
+      error.hidden = true;
+      input.addEventListener("keydown", function (event) {
+        if (event.key === "Escape") { event.preventDefault(); cancelButton.click(); }
+        if ((!config.multiline && event.key === "Enter") ||
+            (config.multiline && event.key === "Enter" && (event.ctrlKey || event.metaKey))) {
+          event.preventDefault(); saveButton.click();
+        }
+      });
+      window.setTimeout(function () { input.focus(); input.select(); }, 0);
+    }
+
+    render();
+    return { getValue: function () { return currentValue; } };
+  }
 
   function ensureConnectButtonInnerStatus() {
     var button = document.querySelector(".connect-btn");
@@ -824,6 +1044,14 @@ _CHROME_CONTROLS_TEMPLATE = r"""(function (window) {
   }
 
   function wireChromeControls() {
+    // Idempotent: this runs on DOMContentLoaded (below) AND is re-exported
+    // as runtime.wireAnnotationControls, which the WorkStream render
+    // pipeline invokes again as a render step. Without this guard every
+    // chrome button (connect, refresh, subjects, workbook) ends up with
+    // two identical click listeners — the visible symptom being the
+    // Subjects/Threads dialog opening twice on a single click.
+    if (wireChromeControls._wired) return;
+    wireChromeControls._wired = true;
     wireConnectionStatusIndicator();
     var connectBtn = document.querySelector(".connect-btn");
     if (connectBtn) {
@@ -884,6 +1112,71 @@ _CHROME_CONTROLS_TEMPLATE = r"""(function (window) {
         refreshBtn.disabled = true;
       }
     }
+
+    var printBtn = document.querySelector(".gantt-print-btn");
+    if (printBtn) {
+      printBtn.addEventListener("click", function printGanttClickHandler() {
+        window.print();
+      });
+    }
+
+    // Opens the connected page workbook (.xlsx) in Excel. When the view is
+    // opened from disk (file://) the workbook resolves to a real file:// URL,
+    // so the Office URI scheme ("ms-excel:ofe|u|<url>" = Open For Editing by
+    // URL) hands Excel the *exact* file — edits land back in the connected
+    // folder, not in a downloaded copy. Over http(s) there is no local file to
+    // point at, so it falls back to opening the served copy in a new tab.
+    // The workbook path is only known once a folder is connected. It is
+    // relative to the resolved dataset, while this generated Page is served
+    // from the selected container root, so prepend the dataset path discovered
+    // by resolveContainerHandle().
+    var openWorkbookBtn = document.querySelector(
+      ".gantt-open-workbook-btn, .workstream-open-workbook-btn"
+    );
+    if (openWorkbookBtn) {
+      openWorkbookBtn.addEventListener("click", function openWorkbookClickHandler() {
+        var state = runtime.state || {};
+        var workbookRelPath = state.workbookRelPath || state.workbookPath || "";
+        // The runtime resolves the workbook path relative to the *dataset*
+        // folder, but this generated Page is served from the *container* root
+        // (<container>/.__ontobdc__/asset/). The dataset folder is a direct
+        // child of the container root — its name is in the payload — so
+        // prepend it. Both the Gantt and WorkStream Pages need this.
+        var payload = runtime.WORKSTREAM_PAYLOAD
+          || window.infoBimIfcWorkScheduleView
+          || window.infoBimWorkStreamView
+          || {};
+        var datasetFolder = String(payload.datasetFolder || state.datasetRelPath || "");
+        var relPath = [datasetFolder, workbookRelPath].filter(Boolean).join("/");
+        if (!relPath) return;
+        var assetBase = window.__ONTOBDC_ASSET_BASE_URL__ || "";
+        var containerRoot = assetBase.replace(/\.__ontobdc__\/asset\/?$/, "");
+        if (!containerRoot) {
+          // The page lives at <root>/.__ontobdc__/view/ifc_work_schedule/<id>.html
+          try { containerRoot = new URL("../../../", location.href).href; }
+          catch (e) { containerRoot = ""; }
+        }
+        if (containerRoot && containerRoot.charAt(containerRoot.length - 1) !== "/") {
+          containerRoot += "/";
+        }
+        var encoded = String(relPath).split("/").map(function (segment) {
+          return encodeURIComponent(segment);
+        }).join("/");
+        var fileUrl = containerRoot + encoded;
+
+        var opener = document.createElement("a");
+        if (fileUrl.indexOf("file:") === 0) {
+          opener.href = "ms-excel:ofe|u|" + fileUrl;
+        } else {
+          opener.href = fileUrl;
+          opener.target = "_blank";
+          opener.rel = "noopener";
+        }
+        document.body.appendChild(opener);
+        opener.click();
+        document.body.removeChild(opener);
+      });
+    }
   }
 
   if (document.readyState === "loading") {
@@ -902,6 +1195,7 @@ _CHROME_CONTROLS_TEMPLATE = r"""(function (window) {
     wireConnectionStatusIndicator: wireConnectionStatusIndicator,
     wireChromeControls: wireChromeControls,
     wireAnnotationControls: wireChromeControls,
+    mountInlineEditor: mountInlineEditor,
   });
   console.log("[work-stream-view] state end: chrome_controls_script_generated");
 }(window));

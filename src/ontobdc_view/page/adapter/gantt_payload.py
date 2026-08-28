@@ -32,6 +32,11 @@ class GanttPayloadAdapter(GanttPayloadPort):
             "entity": "IfcWorkSchedule",
             "scheduleUri": entity_id,
             "resourceName": self.RESOURCE_NAME,
+            # The dataset folder sits directly under the container root
+            # (`<container>/<datasetFolder>/payload/...`). The connected
+            # workbook path the runtime resolves is dataset-relative, so the
+            # "open in Excel" button prepends this to reach the real file.
+            "datasetFolder": dataset_name,
             "datapackagePath": ".__ontobdc__/datapackage.json",
             "linksetPath": ".__ontobdc__/linkset/ns.ttl",
             "viewLinksetPath": ".__ontobdc__/linkset/view.ttl",

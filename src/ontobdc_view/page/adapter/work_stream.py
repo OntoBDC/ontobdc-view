@@ -172,7 +172,12 @@ class WorkStreamScriptAdapter(WorkStreamScriptPort):
     ensureConnectButtonInnerStatus();
     for (const el of document.querySelectorAll("[data-i18n]")) {
       if (el.classList.contains("connect-btn")) {
-        setConnectButtonLabel(t(el.dataset.i18n));
+        // The connect-button label is connection-state driven (Connect /
+        // Connected / Reconnect …), not static. Re-apply the *connected*
+        // label when a folder is already connected so a re-render (e.g. from
+        // refreshFromWorkbook) doesn't reset it back to "Connect folder".
+        const connected = runtime.state.rawContainerHandle || runtime.state.datasetHandle;
+        setConnectButtonLabel(t(connected ? "connectedFolder" : el.dataset.i18n));
       } else {
         el.textContent = t(el.dataset.i18n);
       }
@@ -263,8 +268,7 @@ class WorkStreamScriptAdapter(WorkStreamScriptPort):
       if (uri !== propertyUri) continue;
       const raw = runtime.state.liveWorkbookRecord[column] ?? runtime.state.liveWorkbookRecord[column.toLowerCase()];
       if (raw === null || raw === undefined) continue;
-      const text = String(raw).trim();
-      if (text !== "") return text;
+      return String(raw).trim();
     }
     return null;
   }
@@ -325,24 +329,41 @@ class WorkStreamScriptAdapter(WorkStreamScriptPort):
       : "";
 
     document.title = name || identifier || document.title;
-    document.querySelector(".name").textContent = name || identifier || t("breadcrumbWorkStream");
+    const nameHost = document.querySelector(".name");
+    runtime.mountInlineEditor(nameHost, {
+      value: name || identifier || t("breadcrumbWorkStream"),
+      required: true,
+      editLabel: t("editField", { field: t("name") }),
+      saveLabel: t("saveField", { field: t("name") }),
+      cancelLabel: t("cancelEdit"),
+      requiredMessage: t("fieldRequired", { field: t("name") }),
+      emptyLabel: t("emptyValue"),
+      onSave: (value) => runtime.saveWorkStreamField("Name", value),
+    });
     document.querySelector(".identifier").textContent = identifier;
 
     const description = literal(runtime.state.selfNode, DCTERMS_DESCRIPTION);
     const fieldsContainer = document.querySelector(".fields");
     fieldsContainer.innerHTML = "";
-    if (description) {
-      const row = document.createElement("div");
-      row.className = "field";
-      const labelEl = document.createElement("div");
-      labelEl.className = "field-label";
-      labelEl.textContent = t("description");
-      const valueEl = document.createElement("div");
-      valueEl.className = "field-value";
-      valueEl.textContent = description;
-      row.append(labelEl, valueEl);
-      fieldsContainer.appendChild(row);
-    }
+    const row = document.createElement("div");
+    row.className = "field";
+    const labelEl = document.createElement("div");
+    labelEl.className = "field-label";
+    labelEl.textContent = t("description");
+    const valueEl = document.createElement("div");
+    valueEl.className = "field-value";
+    runtime.mountInlineEditor(valueEl, {
+      value: description,
+      multiline: true,
+      rows: 3,
+      editLabel: t("editField", { field: t("description") }),
+      saveLabel: t("saveField", { field: t("description") }),
+      cancelLabel: t("cancelEdit"),
+      emptyLabel: t("emptyValue"),
+      onSave: (value) => runtime.saveWorkStreamField("Description", value),
+    });
+    row.append(labelEl, valueEl);
+    fieldsContainer.appendChild(row);
 
     return identifier;
   }
@@ -526,8 +547,6 @@ class WorkStreamScriptAdapter(WorkStreamScriptPort):
   var t = (typeof runtime.t === "function") ? runtime.t : __ontobdcIdentityT;
   var literal = runtime.literal;
   var resourceLabel = runtime.resourceLabel;
-  var openContainer = runtime.openContainer;
-  var refreshFromWorkbook = runtime.refreshFromWorkbook;
   var OBDC_NS = runtime.OBDC_NS;
 
   let annotationRuntime = null;
@@ -704,58 +723,14 @@ class WorkStreamScriptAdapter(WorkStreamScriptPort):
     }
   }
 
-  // Pure listener: never called imperatively, never touched by
-  // openContainer()/refreshFromWorkbook() directly. It only reacts to
-  // ONTOBDC_CONNECTION_STATUS_EVENT (dispatched by setConnectionStatus() in
-  // connection_state.js), so the dot always reflects whatever the last
-  // dispatched status was, regardless of which flow (connect or refresh)
-  // fired it.
-  function wireConnectionStatusIndicator() {
-    const dot = document.querySelector(".connect-btn .connection-status") || document.querySelector(".connection-status");
-    if (!dot) return;
-    const labelKeyByStatus = {
-      idle: "connectionIdle",
-      connecting: "connecting",
-      connected: "folderConnected",
-      error: "connectionFailed",
-    };
-    window.addEventListener(runtime.ONTOBDC_CONNECTION_STATUS_EVENT, (event) => {
-      const status = (event.detail && event.detail.status) || "idle";
-      dot.dataset.status = status;
-      const labelKey = labelKeyByStatus[status] || labelKeyByStatus.idle;
-      dot.setAttribute("aria-label", t(labelKey));
-      dot.title = t(labelKey);
-    });
-  }
-
   function wireAnnotationControls() {
-    wireConnectionStatusIndicator();
-    document.querySelector(".connect-btn").addEventListener(
-      "click",
-      async function connectFolderClickHandler() {
-        if (
-          runtime.pendingReconnectAttempt &&
-          typeof runtime.pendingReconnectAttempt.then === "function"
-        ) {
-          try {
-            await runtime.pendingReconnectAttempt;
-          } catch {
-          }
-        }
-        try {
-          await openContainer();
-        } catch (error) {
-          console.error(error);
-        }
-      }
-    );
-    const workspaceBtnWire = document.querySelector(".workspace-btn");
-    if (workspaceBtnWire) workspaceBtnWire.addEventListener("click", openWorkspace);
-    document.querySelector(".subjects-btn").addEventListener("click", openSubjectPage);
-    const refreshBtn = document.querySelector(".refresh-btn");
-    if (refreshBtn) {
-      refreshBtn.addEventListener("click", refreshFromWorkbook);
-      if (!runtime.WORKSTREAM_PAYLOAD) refreshBtn.hidden = true;
+    // The Subjects/Threads and Workspace buttons are wired exactly once by
+    // container.py's wireChromeControls() (runs on DOMContentLoaded and is
+    // idempotent). Doing it again here is what made the Threads dialog open
+    // twice per click, so this render step now only guarantees that wiring
+    // has happened rather than adding its own duplicate listeners.
+    if (typeof runtime.wireChromeControls === "function") {
+      runtime.wireChromeControls();
     }
   }
 
@@ -983,6 +958,10 @@ if not resource:
     )
 workbook_path = (datapackage_path.parent / resource["path"]).resolve()
 _trace_p("WORKBOOK_PATH=" + str(workbook_path) + " EX=" + str(workbook_path.exists()))
+try:
+    workbook_relative_path = workbook_path.relative_to(container).as_posix()
+except ValueError:
+    workbook_relative_path = ""
 worksheet_name = (
     resource.get("dialect", {})
     .get("excel", {})
@@ -1325,11 +1304,222 @@ json.dumps(
         "catalogResources": catalog_resources,
         "relationships": relationships,
         "workbookPath": str(workbook_path),
+        "workbookRelativePath": workbook_relative_path,
+        "worksheetName": worksheet_name,
         "linksetPath": str(linkset_path),
     },
     ensure_ascii=False,
 )
 `;
+
+  const WORKBOOK_WRITE_SCRIPT = `
+import json
+from openpyxl import load_workbook
+
+columns = json.loads(work_stream_column_candidates_json)
+workbook = load_workbook(workbook_path)
+try:
+    if worksheet_name not in workbook.sheetnames:
+        raise ValueError(f"Worksheet {worksheet_name} was not found")
+    sheet = workbook[worksheet_name]
+    headers = {
+        str(cell.value).strip(): cell.column
+        for cell in sheet[1]
+        if cell.value is not None and str(cell.value).strip()
+    }
+    global_id_column = headers.get("GlobalId")
+    if global_id_column is None:
+        raise ValueError("WorkStream worksheet does not have a GlobalId column")
+    value_column = next((headers[name] for name in columns if name in headers), None)
+    if value_column is None:
+        value_column = sheet.max_column + 1
+        sheet.cell(row=1, column=value_column, value=columns[0])
+    target_row = next(
+        (
+            row
+            for row in range(2, sheet.max_row + 1)
+            if str(sheet.cell(row=row, column=global_id_column).value or "").strip()
+            == str(work_stream_global_id).strip()
+        ),
+        None,
+    )
+    if target_row is None:
+        raise ValueError(f"WorkStream row not found (GlobalId {work_stream_global_id})")
+    sheet.cell(row=target_row, column=value_column, value=work_stream_value)
+    workbook.save(workbook_path)
+finally:
+    workbook.close()
+json.dumps({"ok": True})
+`;
+
+  function syncMountedFilesystem(pyodide) {
+    return new Promise((resolve, reject) => {
+      pyodide.FS.syncfs(false, (error) => error ? reject(error) : resolve());
+    });
+  }
+
+  // ── SheetJS-native workbook access ──────────────────────────────────────
+  // Read and write the WorkStream .xlsx straight in the browser with the
+  // vendored SheetJS build, so connecting and saving work on file:// too
+  // (Pyodide never boots offline — no CDN, no vendored wheels). The Python
+  // WORKBOOK_PARSE_SCRIPT / WORKBOOK_WRITE_SCRIPT stay as the fallback.
+  function hasSheetJS() {
+    return typeof window.XLSX !== "undefined"
+      && !!window.XLSX
+      && typeof window.XLSX.read === "function";
+  }
+
+  function _wsNavigateSegments(baseDir, relPath) {
+    const stack = String(baseDir || "").split("/").filter(Boolean);
+    String(relPath || "").split("/").forEach((segment) => {
+      if (!segment || segment === ".") return;
+      if (segment === "..") stack.pop();
+      else stack.push(segment);
+    });
+    return stack;
+  }
+
+  async function _wsFileHandleBySegments(rootHandle, segments) {
+    let dir = rootHandle;
+    for (let i = 0; i < segments.length - 1; i++) {
+      dir = await dir.getDirectoryHandle(segments[i]);
+    }
+    return dir.getFileHandle(segments[segments.length - 1]);
+  }
+
+  async function sheetJsRefreshFromWorkbook() {
+    if (!hasSheetJS()) throw new Error("SheetJS is not available on this page.");
+    const payload = WORKSTREAM_PAYLOAD || runtime.WORKSTREAM_PAYLOAD || window.infoBimWorkStreamView;
+    if (!payload) throw new Error("No WorkStream context payload present on this page.");
+    const elementId = String(payload.elementId || "").trim();
+    const datasetHandle = runtime.state.datasetHandle || runtime.state.rawContainerHandle;
+    if (!datasetHandle) throw new Error(t("connectFolderFirst"));
+
+    const dpSegments = String(payload.datapackagePath || ".__ontobdc__/datapackage.json")
+      .split("/").filter(Boolean);
+    const dpFile = await _wsFileHandleBySegments(datasetHandle, dpSegments);
+    const datapackage = JSON.parse(await (await dpFile.getFile()).text());
+    const resources = Array.isArray(datapackage.resources) ? datapackage.resources : [];
+    const resourceName = runtime.WORK_STREAM_RESOURCE_NAME || "work_stream";
+    const resource = resources.find((r) => r && r.name === resourceName)
+      || resources.find((r) => r && typeof r.path === "string" && /\.xlsx$/i.test(r.path));
+    if (!resource || !resource.path) {
+      throw new Error('datapackage.json has no "' + resourceName + '" resource.');
+    }
+    let sheetName = (((resource.dialect || {}).excel || {}).sheet) || "WorkStream";
+
+    const dpDir = dpSegments.slice(0, -1).join("/");
+    const xlsxSegments = _wsNavigateSegments(dpDir, resource.path);
+    const xlsxHandle = await _wsFileHandleBySegments(datasetHandle, xlsxSegments);
+    const buffer = await (await xlsxHandle.getFile()).arrayBuffer();
+    const workbook = window.XLSX.read(buffer, { type: "array" });
+    if (workbook.SheetNames.indexOf(sheetName) === -1) sheetName = workbook.SheetNames[0];
+    const rows = window.XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: "" });
+    const record = rows.find(
+      (row) => String(row.GlobalId || "").trim() === elementId
+    ) || null;
+
+    const relPath = xlsxSegments.join("/");
+    runtime.state.workbookFileHandle = xlsxHandle;
+    runtime.state.workbookSheetJs = workbook;
+    runtime.state.workbookRelPath = relPath;
+    runtime.state.liveWorkbookPath = relPath;
+    runtime.state.liveWorksheetName = sheetName;
+
+    return {
+      nodes: [{
+        "@id": String(payload.workstreamUri || elementId),
+        "@type": [(runtime.WORK_STREAM_TYPE_NS || "") + "WorkStream"],
+      }],
+      record: record,
+      workbookPath: relPath,
+      workbookRelativePath: relPath,
+      worksheetName: sheetName,
+      relationships: null,
+    };
+  }
+
+  async function _sheetJsWriteWorkStreamCell(columnCandidates, value, globalId) {
+    const XLSX = window.XLSX;
+    const wb = runtime.state.workbookSheetJs;
+    const fileHandle = runtime.state.workbookFileHandle;
+    let sheetName = runtime.state.liveWorksheetName || "WorkStream";
+    if (wb.SheetNames.indexOf(sheetName) === -1) sheetName = wb.SheetNames[0];
+    const ws = wb.Sheets[sheetName];
+    const range = XLSX.utils.decode_range(ws["!ref"]);
+    const headerRow = range.s.r;
+    const colByName = {};
+    for (let c = range.s.c; c <= range.e.c; c++) {
+      const hc = ws[XLSX.utils.encode_cell({ r: headerRow, c: c })];
+      const name = (hc && hc.v != null) ? String(hc.v).trim() : "";
+      if (name) colByName[name] = c;
+    }
+    const gidCol = colByName["GlobalId"];
+    if (gidCol === undefined) throw new Error("WorkStream sheet has no GlobalId column.");
+    let valueCol;
+    for (let i = 0; i < columnCandidates.length; i++) {
+      if (colByName[columnCandidates[i]] !== undefined) { valueCol = colByName[columnCandidates[i]]; break; }
+    }
+    if (valueCol === undefined) {
+      valueCol = range.e.c + 1;
+      ws[XLSX.utils.encode_cell({ r: headerRow, c: valueCol })] = { t: "s", v: columnCandidates[0] };
+      range.e.c = valueCol;
+      ws["!ref"] = XLSX.utils.encode_range(range);
+    }
+    let targetRow = -1;
+    for (let r = headerRow + 1; r <= range.e.r; r++) {
+      const gc = ws[XLSX.utils.encode_cell({ r: r, c: gidCol })];
+      if (gc && String(gc.v).trim() === globalId) { targetRow = r; break; }
+    }
+    if (targetRow === -1) throw new Error("WorkStream row not found (GlobalId " + globalId + ").");
+    ws[XLSX.utils.encode_cell({ r: targetRow, c: valueCol })] = { t: "s", v: value };
+    const out = XLSX.write(wb, { type: "array", bookType: "xlsx" });
+    const writable = await fileHandle.createWritable();
+    await writable.write(out);
+    await writable.close();
+  }
+
+  async function saveWorkStreamField(column, value) {
+    const candidatesByColumn = {
+      Name: ["Name"], Description: ["Description"], What: ["What"],
+      Why: ["Why"], Who: ["Who"], Where: ["Where"], When: ["When"],
+      How: ["How"], HowMuch: ["HowMuch", "How much"],
+    };
+    const candidates = candidatesByColumn[column];
+    if (!candidates) throw new Error(`Unsupported WorkStream column: ${column}`);
+    const globalId = String(WORKSTREAM_PAYLOAD?.elementId || "").trim();
+    if (!globalId) throw new Error(t("noWorkStreamContext"));
+
+    if (hasSheetJS() && runtime.state.workbookFileHandle && runtime.state.workbookSheetJs) {
+      await _sheetJsWriteWorkStreamCell(candidates, value, globalId);
+      runtime.state.liveWorkbookRecord = runtime.state.liveWorkbookRecord || {};
+      runtime.state.liveWorkbookRecord[column] = value;
+      if (runtime.scheduleSurfaceRegeneration) {
+        runtime.scheduleSurfaceRegeneration("workstream_field:" + column);
+      }
+      return;
+    }
+
+    if (!runtime.state.activeMountPath || !runtime.state.liveWorkbookPath) {
+      throw new Error(t("connectFolderFirst"));
+    }
+    const pyodide = await ensurePyodide({ withOpenpyxl: true });
+    await withPyodideLock(async () => {
+      pyodide.globals.set("workbook_path", runtime.state.liveWorkbookPath);
+      pyodide.globals.set("worksheet_name", runtime.state.liveWorksheetName || "WorkStream");
+      pyodide.globals.set("work_stream_global_id", globalId);
+      pyodide.globals.set("work_stream_column_candidates_json", JSON.stringify(candidates));
+      pyodide.globals.set("work_stream_value", value);
+      const proxy = await pyodide.runPythonAsync(WORKBOOK_WRITE_SCRIPT);
+      if (proxy && typeof proxy.destroy === "function") proxy.destroy();
+      await syncMountedFilesystem(pyodide);
+    });
+    runtime.state.liveWorkbookRecord = runtime.state.liveWorkbookRecord || {};
+    runtime.state.liveWorkbookRecord[column] = value;
+    if (runtime.scheduleSurfaceRegeneration) {
+      runtime.scheduleSurfaceRegeneration("workstream_field:" + column);
+    }
+  }
 
   async function openContainerFromHandle(handle) {
     if (!WORKSTREAM_PAYLOAD) {
@@ -1376,30 +1566,37 @@ json.dumps(
   }
 
   async function refreshFromWorkbook() {
-    if (!runtime.state.rawContainerHandle) return;
-    var setConnectionStatus = runtime.setConnectionStatus;
+    if (!runtime.state.rawContainerHandle && !runtime.state.datasetHandle) return;
+    // Refresh only re-reads the workbook and re-renders — it must NOT touch
+    // the connection status or the connect-button label (that state is owned
+    // by the connect flow). This matches the IfcWorkSchedule Page's refresh,
+    // which just re-parses and never repaints "Connecting…"/the status dot.
     const refreshBtn = document.querySelector(".refresh-btn");
-    const originalLabel = refreshBtn?.textContent || "";
-    if (setConnectionStatus) setConnectionStatus("connecting");
+    const originalTitle = refreshBtn?.title || "";
     try {
       if (refreshBtn) {
         refreshBtn.disabled = true;
-        refreshBtn.textContent = t("refreshingFromWorkbook");
+        refreshBtn.title = t("refreshingFromWorkbook");
       }
-      const result = await openContainerFromHandle(runtime.state.datasetHandle || runtime.state.rawContainerHandle);
+      let result = null;
+      if (hasSheetJS()) {
+        try {
+          result = await sheetJsRefreshFromWorkbook();
+        } catch (sheetError) {
+          console.warn("SheetJS refresh failed; falling back to Pyodide:", sheetError);
+          result = null;
+        }
+      }
+      if (!result || !result.nodes || !result.nodes.length) {
+        result = await openContainerFromHandle(runtime.state.datasetHandle || runtime.state.rawContainerHandle);
+      }
       applyLiveWorkbookResult(result);
-      if (setConnectionStatus) setConnectionStatus("connected");
     } catch (error) {
       console.error(error);
-      window.alert(`Could not refresh from workbook: ${error.message || error}`);
-      if (setConnectionStatus) {
-        setConnectionStatus("error");
-        setTimeout(() => setConnectionStatus("connected"), 4000);
-      }
     } finally {
       if (refreshBtn) {
-        refreshBtn.disabled = !runtime.state.rawContainerHandle;
-        if (runtime.state.rawContainerHandle) refreshBtn.textContent = originalLabel || t("refreshFromWorkbook");
+        refreshBtn.disabled = !runtime.state.rawContainerHandle && !runtime.state.datasetHandle;
+        refreshBtn.title = originalTitle || t("refreshFromWorkbookTitle");
       }
     }
   }
@@ -1408,7 +1605,14 @@ json.dumps(
     if (!result) return;
     const fireCardOnConnected = !(options && options.fireCardOnConnected === false);
     runtime.state.liveWorkbookRecord = result.record || null;
+    runtime.state.liveWorkbookPath = result.workbookPath || "";
+    runtime.state.workbookRelPath = result.workbookRelativePath || "";
+    runtime.state.liveWorksheetName = result.worksheetName || "WorkStream";
     runtime.state.liveRelationships = result.relationships || null;
+    const openWorkbookBtn = document.querySelector(".workstream-open-workbook-btn");
+    if (openWorkbookBtn) {
+      openWorkbookBtn.disabled = !runtime.state.workbookRelPath;
+    }
     renderHeader();
     // Re-mount every dimension card. The live record may have added a
     // dimension value that the static JSON-LD left blank (so the card
@@ -1428,9 +1632,13 @@ json.dumps(
     ensurePyodide: ensurePyodide,
     withPyodideLock: withPyodideLock,
     WORKBOOK_PARSE_SCRIPT: WORKBOOK_PARSE_SCRIPT,
+    WORKBOOK_WRITE_SCRIPT: WORKBOOK_WRITE_SCRIPT,
     openContainerFromHandle: openContainerFromHandle,
     refreshFromWorkbook: refreshFromWorkbook,
-    applyLiveWorkbookResult: applyLiveWorkbookResult
+    applyLiveWorkbookResult: applyLiveWorkbookResult,
+    saveWorkStreamField: saveWorkStreamField,
+    hasSheetJS: hasSheetJS,
+    sheetJsRefreshFromWorkbook: sheetJsRefreshFromWorkbook
   });
   console.log("[work-stream-view] state end: pyodide_runtime_script_generated");
 }(window));
@@ -1625,50 +1833,204 @@ json.dumps({
 })
 `;
 
+  // ── Pure-JS linkset editing ────────────────────────────────────────────
+  // The ISO 21597 linkset files this reads/writes are generated by OntoBDC
+  // itself with a fixed shape (one DirectedBinaryLink per resource, each with
+  // a nested from/to URIBasedIdentifier and — for the suggested kind — a
+  // status/modifiedAt pair). That regularity means the read-modify-write can
+  // run entirely in the browser, so relate/suggest work on file:// too:
+  // Pyodide + rdflib were only ever needed here for the Turtle round-trip and
+  // never boot offline (no vendored wheels). The Python side still parses
+  // these files with rdflib, so the output stays standard Turtle.
+
+  const _LINKSET_TTL_PREFIXES = {
+    related:
+      '@prefix ls: <https://standards.iso.org/iso/21597/-1/ed-1/en/Linkset#> .\n'
+      + '@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .\n',
+    suggested:
+      '@prefix ls: <https://standards.iso.org/iso/21597/-1/ed-1/en/Linkset#> .\n'
+      + '@prefix obdc: <http://ontobdc.org/ontology/domain/ontobdc/ns.ttl#> .\n'
+      + '@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .\n',
+  };
+
+  function _ttlEscape(value) {
+    return String(value)
+      .replace(/\\/g, "\\\\")
+      .replace(/"/g, '\\"')
+      .replace(/\n/g, "\\n")
+      .replace(/\r/g, "\\r")
+      .replace(/\t/g, "\\t");
+  }
+  function _ttlUnescape(value) {
+    return String(value).replace(/\\(["\\ntr])/g, function (_, ch) {
+      return ch === "n" ? "\n" : ch === "t" ? "\t" : ch === "r" ? "\r" : ch;
+    });
+  }
+
+  function _statusToUri(local) {
+    return local ? SUGGESTION_STATUS_NS + local : null;
+  }
+  function _statusLocalName(uri) {
+    return uri ? String(uri).split("#").pop() : null;
+  }
+
+  // Parse a linkset TTL into [{ linkUri, from, to, status, modifiedAt }].
+  function parseLinksetLinks(ttl) {
+    const links = [];
+    if (!ttl || !ttl.trim()) return links;
+    // rdflib serializes one subject per blank-line-separated paragraph.
+    const chunks = ttl.split(/\r?\n\s*\r?\n/);
+    for (const chunk of chunks) {
+      if (!chunk || chunk.indexOf("ls:DirectedBinaryLink") === -1) continue;
+      const linkMatch = chunk.match(/<([^>]+)>\s+a\s+ls:DirectedBinaryLink/);
+      if (!linkMatch) continue;
+      const uris = [];
+      const uriRe = /ls:uri\s+"((?:[^"\\]|\\.)*)"\s*\^\^\s*xsd:anyURI/g;
+      let u;
+      while ((u = uriRe.exec(chunk)) !== null) uris.push(_ttlUnescape(u[1]));
+      if (uris.length < 2) continue;
+      let from = uris[0];
+      let to = uris[1];
+      const fromKw = chunk.indexOf("hasFromLinkElement");
+      const toKw = chunk.indexOf("hasToLinkElement");
+      if (fromKw !== -1 && toKw !== -1 && toKw < fromKw) {
+        from = uris[1];
+        to = uris[0];
+      }
+      const statusMatch = chunk.match(
+        /suggestionStatus\s+(?:obdc:(\w+)|<([^>]+)>)/
+      );
+      const status = statusMatch
+        ? (statusMatch[1] ? _statusToUri(statusMatch[1]) : statusMatch[2])
+        : null;
+      const modifiedMatch = chunk.match(
+        /suggestionModifiedAt\s+"((?:[^"\\]|\\.)*)"/
+      );
+      links.push({
+        linkUri: linkMatch[1],
+        from: from,
+        to: to,
+        status: status,
+        modifiedAt: modifiedMatch ? modifiedMatch[1] : null,
+      });
+    }
+    return links;
+  }
+
+  function serializeLinksetLinks(kind, links) {
+    const parts = [_LINKSET_TTL_PREFIXES[kind] || _LINKSET_TTL_PREFIXES.related, ""];
+    for (const link of links) {
+      let block = `<${link.linkUri}> a ls:DirectedBinaryLink`;
+      if (kind === "suggested" && link.status) {
+        if (link.modifiedAt) {
+          block += ` ;\n    obdc:suggestionModifiedAt "${_ttlEscape(link.modifiedAt)}"^^xsd:dateTimeStamp`;
+        }
+        block += ` ;\n    obdc:suggestionStatus obdc:${_statusLocalName(link.status)}`;
+      }
+      block +=
+        ` ;\n    ls:hasFromLinkElement [ ls:hasIdentifier [ a ls:URIBasedIdentifier ;\n`
+        + `                    ls:uri "${_ttlEscape(link.from)}"^^xsd:anyURI ] ] ;\n`
+        + `    ls:hasToLinkElement [ ls:hasIdentifier [ a ls:URIBasedIdentifier ;\n`
+        + `                    ls:uri "${_ttlEscape(link.to)}"^^xsd:anyURI ] ] .`;
+      parts.push(block, "");
+    }
+    return parts.join("\n");
+  }
+
+  async function _sha256Hex16(text) {
+    const digest = await crypto.subtle.digest(
+      "SHA-256",
+      new TextEncoder().encode(text)
+    );
+    let hex = "";
+    const bytes = new Uint8Array(digest);
+    for (let i = 0; i < bytes.length; i++) {
+      hex += bytes[i].toString(16).padStart(2, "0");
+    }
+    return hex.slice(0, 16);
+  }
+
+  // Serializes every linkset read-modify-write through one queue so two
+  // near-simultaneous button clicks (or a burst of dimension-card reads on
+  // connect) can't clobber the same file.
+  let _linksetQueue = Promise.resolve();
+  function _withLinksetLock(taskFn) {
+    const settled = _linksetQueue.then(taskFn, taskFn);
+    _linksetQueue = settled.then(() => {}, () => {});
+    return settled;
+  }
+
   // Runs one read/add/remove op on a linkset kind (related/suggested)
-  // and returns { ttl, entries, allStatus } where:
+  // and returns { entries, allStatus } where:
   //   * `entries`     — dimension URI -> resource URI list (only "active"
   //                     links: every related link, plus Proposed suggestions;
   //                     Rejected suggestions are excluded on purpose).
-  //   * `allStatus`   — dimension URI -> resource URI -> status string,
-  //                     useful for lifecycle visibility on the UI side.
+  //   * `allStatus`   — dimension URI -> resource URI -> status URI string.
   async function runLinksetOperation(kind, action, dimensionUri, resourceId) {
-    const pyodide = await ensurePyodide();
     const nsPrefix = LINKSET_NS_PREFIXES[kind];
     if (!nsPrefix) throw new Error(`Unknown linkset kind: ${kind}`);
     const actionCodes = LINKSET_ACTIONS[kind];
     if (!actionCodes) throw new Error(`Unknown linkset kind: ${kind}`);
 
     const codeMap = {
-      [actionCodes.add]: `${nsPrefix}:add`,
-      [actionCodes.remove]: `${nsPrefix}:remove`,
+      [actionCodes.add]: "add",
+      [actionCodes.remove]: "remove",
       read: "read",
     };
     const codedAction = codeMap[action];
     if (codedAction === undefined) throw new Error(`Unknown action ${action} for kind ${kind}`);
 
-    const hasStatusLifecycle = kind === "suggested" ? "true" : "false";
-    const existingTtl = await readLinksetText(kind);
-    const resultJson = await runtime.withPyodideLock(() => {
-      pyodide.globals.set("existing_ttl", existingTtl);
-      pyodide.globals.set("ns_prefix", nsPrefix);
-      pyodide.globals.set("has_status_lifecycle", hasStatusLifecycle);
-      pyodide.globals.set("status_ns", SUGGESTION_STATUS_NS);
-      pyodide.globals.set("status_proposed", SUGGESTION_STATUS.PROPOSED);
-      pyodide.globals.set("status_rejected", SUGGESTION_STATUS.REJECTED);
-      pyodide.globals.set("status_predicate", SUGGESTION_STATUS_PREDICATE);
-      pyodide.globals.set("status_modified_at_predicate", SUGGESTION_MODIFIED_AT_PREDICATE);
-      pyodide.globals.set("dimension_uri", dimensionUri || "");
-      pyodide.globals.set("resource_uri", resourceId || "");
-      pyodide.globals.set("action", codedAction);
-      return pyodide.runPythonAsync(LINKSET_PYTHON_SCRIPT);
+    const hasStatusLifecycle = kind === "suggested";
+    const REJECTED = SUGGESTION_STATUS.REJECTED;
+    const PROPOSED = SUGGESTION_STATUS.PROPOSED;
+
+    return _withLinksetLock(async () => {
+      const links = parseLinksetLinks(await readLinksetText(kind));
+
+      if (codedAction !== "read" && dimensionUri && resourceId) {
+        const index = links.findIndex(
+          (link) => link.from === dimensionUri && link.to === resourceId
+        );
+        if (codedAction === "remove" && index !== -1) {
+          if (hasStatusLifecycle) {
+            links[index].status = REJECTED;
+            links[index].modifiedAt = new Date().toISOString();
+          } else {
+            links.splice(index, 1);
+          }
+        } else if (codedAction === "add") {
+          if (index === -1) {
+            const digest = await _sha256Hex16(dimensionUri + "|" + resourceId);
+            const link = {
+              linkUri: `${nsPrefix}:${digest}`,
+              from: dimensionUri,
+              to: resourceId,
+              status: hasStatusLifecycle ? PROPOSED : null,
+              modifiedAt: hasStatusLifecycle ? new Date().toISOString() : null,
+            };
+            links.push(link);
+          } else if (hasStatusLifecycle && links[index].status === REJECTED) {
+            links[index].status = PROPOSED;
+            links[index].modifiedAt = new Date().toISOString();
+          }
+        }
+      }
+
+      if (codedAction !== "read") {
+        await writeLinksetText(kind, serializeLinksetLinks(kind, links));
+      }
+
+      const entries = {};
+      const allStatus = {};
+      for (const link of links) {
+        (allStatus[link.from] = allStatus[link.from] || {})[link.to] = link.status || null;
+        const isRejected = hasStatusLifecycle && link.status === REJECTED;
+        if (!isRejected) {
+          (entries[link.from] = entries[link.from] || []).push(link.to);
+        }
+      }
+      return { entries, allStatus };
     });
-    const result = JSON.parse(resultJson);
-    if (action !== "read") await writeLinksetText(kind, result.ttl);
-    return {
-      entries: result.entries || {},
-      allStatus: result.allStatus || {},
-    };
   }
 
   async function loadAllLinks(kind) {
@@ -1928,6 +2290,11 @@ json.dumps({"profiles": profiles})
   var tryReconnectSilently = runtime.tryReconnectSilently;
   var wireAnnotationControls = runtime.wireAnnotationControls;
   var ensureAnnotationRuntime = runtime.ensureAnnotationRuntime;
+  var RESOURCE_NODE_ICONS = Object.freeze({
+    file: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><polyline points="14 2 14 8 20 8"/></svg>',
+    folder: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></svg>',
+    folderOpen: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7V6a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v1"/><path d="M3.4 10h17.2a1 1 0 0 1 .95 1.32l-2.34 7A2 2 0 0 1 17.31 20H5.69a2 2 0 0 1-1.9-1.37l-2.34-7A1 1 0 0 1 2.4 10Z"/></svg>',
+  });
   var annotateResource = runtime.annotateResource;
   var loadAllLinks = runtime.loadAllLinks;
   var runLinksetOperation = runtime.runLinksetOperation;
@@ -1941,13 +2308,13 @@ json.dumps({"profiles": profiles})
   // `slug` matches each DimensionKind's schema:identifier exactly (used to
   // build the dimension's URI via OntoBDCWorkStreamContext.dimensionUri).
   const DIMENSIONS = [
-    { key: "what", slug: "what", property: `${runtime.WORK_STREAM_TYPE_NS}what` },
-    { key: "why", slug: "why", property: `${runtime.WORK_STREAM_TYPE_NS}why` },
-    { key: "who", slug: "who", property: `${runtime.WORK_STREAM_TYPE_NS}who` },
-    { key: "where", slug: "where", property: `${runtime.WORK_STREAM_TYPE_NS}where` },
-    { key: "when", slug: "when", property: `${runtime.WORK_STREAM_TYPE_NS}when` },
-    { key: "how", slug: "how", property: `${runtime.WORK_STREAM_TYPE_NS}how` },
-    { key: "howMuch", slug: "how-much", property: `${runtime.WORK_STREAM_TYPE_NS}howMuch` },
+    { key: "what", column: "What", slug: "what", property: `${runtime.WORK_STREAM_TYPE_NS}what` },
+    { key: "why", column: "Why", slug: "why", property: `${runtime.WORK_STREAM_TYPE_NS}why` },
+    { key: "who", column: "Who", slug: "who", property: `${runtime.WORK_STREAM_TYPE_NS}who` },
+    { key: "where", column: "Where", slug: "where", property: `${runtime.WORK_STREAM_TYPE_NS}where` },
+    { key: "when", column: "When", slug: "when", property: `${runtime.WORK_STREAM_TYPE_NS}when` },
+    { key: "how", column: "How", slug: "how", property: `${runtime.WORK_STREAM_TYPE_NS}how` },
+    { key: "howMuch", column: "HowMuch", slug: "how-much", property: `${runtime.WORK_STREAM_TYPE_NS}howMuch` },
   ];
 
   let workStreamContext = null;
@@ -1993,7 +2360,16 @@ json.dumps({"profiles": profiles})
         </div>
       </div>
     `;
-    card.querySelector(".dimension-value").textContent = value;
+    runtime.mountInlineEditor(card.querySelector(".dimension-value"), {
+      value: value,
+      multiline: true,
+      rows: 3,
+      editLabel: t("editField", { field: t(dimension.key) }),
+      saveLabel: t("saveField", { field: t(dimension.key) }),
+      cancelLabel: t("cancelEdit"),
+      emptyLabel: t("emptyValue"),
+      onSave: (nextValue) => runtime.saveWorkStreamField(dimension.column, nextValue),
+    });
 
     const previewEl = card.querySelector(".resource-preview");
     const tabStripEl = card.querySelector(".preview-tabs");
@@ -2404,7 +2780,12 @@ json.dumps({"profiles": profiles})
 
         const icon = document.createElement("span");
         icon.className = "resource-node-icon";
-        icon.textContent = child.isFile ? "\u{1F4C4}" : expanded ? "\u{1F4C2}" : "\u{1F4C1}";
+        icon.setAttribute("aria-hidden", "true");
+        icon.innerHTML = child.isFile
+          ? RESOURCE_NODE_ICONS.file
+          : expanded
+            ? RESOURCE_NODE_ICONS.folderOpen
+            : RESOURCE_NODE_ICONS.folder;
         const nameEl = document.createElement("span");
         nameEl.className = "resource-node-name";
         nameEl.textContent = name;
@@ -2641,7 +3022,6 @@ json.dumps({"profiles": profiles})
     dimensionCards.length = 0;
     for (const dimension of DIMENSIONS) {
       const value = literal(runtime.state.selfNode, dimension.property);
-      if (!value) continue;
       const card = createDimensionCard(dimension, value);
       dimensionCards.push(card);
       container.appendChild(card.element);

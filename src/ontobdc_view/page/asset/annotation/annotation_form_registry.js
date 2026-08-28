@@ -79,6 +79,13 @@
     });
     if (field.kind === "textarea") return fields.textarea(options);
     if (field.kind === "select") return fields.select(options);
+    if (field.kind === "threadSelect") {
+      return fields.threadSelect(Object.assign({}, options, {
+        threads: labels.threads || [],
+        onCreate: labels.onCreateThread || null,
+        labels: labels.threadLabels || {},
+      }));
+    }
     if (field.kind === "uri") return fields.uri(options);
     if (field.kind === "datetime") return fields.datetime(options);
     if (field.kind === "number") return fields.number(options);
@@ -87,14 +94,16 @@
   }
 
   function createForm(category, configuration) {
-    const options = Object.assign({ fields: {}, values: {} }, configuration || {});
+    const options = Object.assign({
+      fields: {}, values: {}, threads: [], onCreateThread: null, threadLabels: {},
+    }, configuration || {});
     const definition = DEFINITIONS[category];
     if (!definition) throw new TypeError("Unsupported annotation category: " + category);
     const root = document.createElement("div");
     root.className = "ontobdc-annotation-form";
     const controls = {};
     const commonFields = [
-      { kind: "text", name: "threads", label: "Threads" },
+      { kind: "threadSelect", name: "threads", label: "Threads" },
     ];
     const roleFields = category === "IssueAnnotation" ? [
       { kind: "text", name: "assignedTo", label: "Assigned to" },
@@ -140,7 +149,10 @@
         if (values[key] === "" || values[key] == null) delete values[key];
       });
       const result = { body: body, properties: values };
-      if (result.properties.threads) {
+      if (Array.isArray(result.properties.threads)) {
+        result.threads = result.properties.threads.slice();
+        delete result.properties.threads;
+      } else if (result.properties.threads) {
         result.threads = result.properties.threads.split(",").map(function (item) { return item.trim(); }).filter(Boolean);
         delete result.properties.threads;
       }
@@ -160,7 +172,7 @@
       Object.keys(annotation.properties || {}).forEach(function (key) {
         if (controls[key]) controls[key].setValue(annotation.properties[key]);
       });
-      if (controls.threads) controls.threads.setValue((annotation.threads || []).join(", "));
+      if (controls.threads) controls.threads.setValue(annotation.threads || []);
       if (controls.assignedTo) controls.assignedTo.setValue((annotation.assignedTo || []).join(", "));
       if (controls.resolvedBy) controls.resolvedBy.setValue(annotation.resolvedBy || "");
       refresh();

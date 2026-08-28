@@ -215,8 +215,8 @@
     draft,
   ) {
     const unit = markerUnit(
-      surface.width,
-      surface.height,
+      surface.pageWidth || surface.width,
+      surface.pageHeight || surface.height,
       options.markerRatio,
     );
     const marker = svgElement("g");

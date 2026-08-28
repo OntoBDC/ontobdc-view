@@ -288,6 +288,69 @@
     return payloads;
   }
 
+  // Threads are named discussion topics an annotation can be filed under
+  // (historically "subjects"). Their catalogue — id, label, description —
+  // is persisted in the same .ttl as one JSON blob on a fixed subject, so
+  // it round-trips the exact same way ea:payload does for annotations.
+  const THREAD_CATALOG_SUBJECT = "urn:ontobdc:thread-catalog";
+  const THREAD_CATALOG_PATTERN = /ea:threadCatalog\s+("(?:\\.|[^"\\])*")/;
+
+  function normalizeThread(value) {
+    const source = value && typeof value === "object" ? value : {};
+    const id = String(source.id == null ? "" : source.id).trim();
+    if (!id) {
+      throw new TypeError("A thread must have an id.");
+    }
+    return {
+      id: id,
+      label: String(source.label == null ? "" : source.label).trim(),
+      description: String(
+        source.description == null ? "" : source.description,
+      ).trim(),
+      created: source.created || new Date().toISOString(),
+    };
+  }
+
+  function parseThreads(source) {
+    const text = String(source == null ? "" : source);
+    const match = THREAD_CATALOG_PATTERN.exec(text);
+    if (!match) {
+      return [];
+    }
+    let parsed = [];
+    try {
+      parsed = JSON.parse(JSON.parse(match[1]));
+    } catch (error) {
+      return [];
+    }
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    const seen = new Set();
+    const threads = [];
+    parsed.forEach(function (entry) {
+      const thread = normalizeThread(entry);
+      if (seen.has(thread.id)) {
+        return;
+      }
+      seen.add(thread.id);
+      threads.push(thread);
+    });
+    return threads;
+  }
+
+  function serializeThreadCatalog(threads) {
+    if (!threads || threads.length === 0) {
+      return "";
+    }
+    return (
+      iri(THREAD_CATALOG_SUBJECT)
+      + " a ea:ThreadCatalog ;\n    ea:threadCatalog "
+      + model.literal(JSON.stringify(threads.map(normalizeThread)))
+      + " .\n"
+    );
+  }
+
   function createFileSystemStore(configuration) {
     const options = Object.assign({
       metadataDirectory: ".__ontobdc__",
@@ -299,6 +362,7 @@
     }, configuration || {});
 
     let annotations = [];
+    let threads = [];
     let loadedContainer = null;
     let loadedRevision = null;
 
@@ -330,14 +394,15 @@
       }
       const handle = await datasetFileHandle(containerHandle);
       const source = await (await handle.getFile()).text();
-      annotations = parseAnnotations(source);
+      annotations = /ea:payload\s+"/.test(source) ? parseAnnotations(source) : [];
+      threads = parseThreads(source);
       loadedRevision = await revision(source);
       loadedContainer = containerHandle;
       return annotations.slice();
     }
 
     function serialize() {
-      if (annotations.length === 0) {
+      if (annotations.length === 0 && threads.length === 0) {
         return "";
       }
       const lines = [
@@ -348,6 +413,10 @@
         "@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .",
         "",
       ];
+      const catalog = serializeThreadCatalog(threads);
+      if (catalog) {
+        lines.push(catalog);
+      }
       annotations.forEach(function (annotation) {
         lines.push(options.serializeAnnotation(annotation));
       });
@@ -362,7 +431,7 @@
         throw new Error("The annotation dataset changed outside this page. Reload before saving.");
       }
       const next = serialize();
-      if (next.trim()) parseAnnotations(next);
+      if (annotations.length) parseAnnotations(next);
       let writable = null;
       try {
         writable = await handle.createWritable();
@@ -384,6 +453,33 @@
 
     function list() {
       return annotations.slice();
+    }
+
+    function listThreads() {
+      return threads.map(function (thread) {
+        return Object.assign({}, thread);
+      });
+    }
+
+    function upsertThread(value) {
+      const thread = normalizeThread(value);
+      const index = threads.findIndex(function (candidate) {
+        return candidate.id === thread.id;
+      });
+      if (index >= 0) {
+        threads[index] = thread;
+      } else {
+        threads.push(thread);
+      }
+      return Object.assign({}, thread);
+    }
+
+    function removeThread(threadId) {
+      const size = threads.length;
+      threads = threads.filter(function (thread) {
+        return thread.id !== threadId;
+      });
+      return threads.length !== size;
     }
 
     function replace(values) {
@@ -417,17 +513,21 @@
     return Object.freeze({
       load: load,
       list: list,
+      listThreads: listThreads,
       persist: persist,
       remove: remove,
+      removeThread: removeThread,
       replace: replace,
       serialize: serialize,
       upsert: upsert,
+      upsertThread: upsertThread,
     });
   }
 
   global.OntoBDCAnnotationStore = Object.freeze({
     createFileSystemStore: createFileSystemStore,
     parseAnnotations: parseAnnotations,
+    parseThreads: parseThreads,
     serializeAnnotation: serializeAnnotation,
   });
 }(globalThis));

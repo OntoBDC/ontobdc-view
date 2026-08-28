@@ -11,6 +11,7 @@
       dialogLabel: "Annotate representation", categoryLabel: "Category", closeLabel: "Close",
       newLabel: "New annotation", deleteLabel: "Delete", saveLabel: "Save",
       categoryLabels: {}, toolLabels: {}, fieldLabels: {}, valueLabels: {},
+      threads: [], onCreateThread: null, threadLabels: {},
     }, configuration || {});
     const root = document.createElement("section");
     root.className = options.prefix + "-annotation-dialog";
@@ -70,7 +71,13 @@
     }
     function setCategory(name) {
       category.value = name;
-      form = registry.createForm(name, { fields: options.fieldLabels, values: options.valueLabels });
+      form = registry.createForm(name, {
+        fields: options.fieldLabels,
+        values: options.valueLabels,
+        threads: options.threads,
+        onCreateThread: options.onCreateThread,
+        threadLabels: options.threadLabels,
+      });
       formHost.replaceChildren(form.root); setTools(form.tools);
       return form;
     }

@@ -25,6 +25,11 @@ class WorkstreamPayloadAdapter(WorkstreamPayloadPort):
             "entity": "WorkStream",
             "workstreamUri": entity_id,
             "dimensionBaseUri": f"{entity_id}/dimension",
+            # The dataset folder sits directly under the container root
+            # (`<container>/<datasetFolder>/payload/...`); the connected
+            # workbook path the runtime resolves is dataset-relative, so the
+            # "open in Excel" button prepends this to reach the real file.
+            "datasetFolder": dataset_name,
             "datapackagePath": ".__ontobdc__/datapackage.json",
             "linksetPath": ".__ontobdc__/linkset/WorkStream.ttl",
             "resourceLinksetPath": ".__ontobdc__/linkset/WorkStreamResource.ttl",

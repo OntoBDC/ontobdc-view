@@ -104,7 +104,12 @@
     <div class="header-actions">
       <span class="connection-status" data-status="idle" role="status" aria-hidden="true"></span>
       <button type="button" class="connect-btn" data-i18n="connectFolder" data-i18n-title="connectFolderTitle" data-i18n-aria-label="connectFolder"></button>
-      <button type="button" class="refresh-btn" disabled data-i18n="refreshFromWorkbook" data-i18n-title="refreshFromWorkbookTitle" data-i18n-aria-label="refreshFromWorkbook"></button>
+      <button type="button" class="icon-btn refresh-btn" disabled data-i18n-title="refreshFromWorkbookTitle" data-i18n-aria-label="refreshFromWorkbook" aria-label="refresh">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+      </button>
+      <button type="button" class="icon-btn workstream-open-workbook-btn" disabled data-i18n-title="openWorkbookTitle" data-i18n-aria-label="openWorkbook" aria-label="open workbook">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2.5" fill="#1D6F42"/><path d="M8.7 8h2.1l1.2 2.15L13.2 8h2.1l-2.35 4 2.35 4h-2.1l-1.2-2.15L10.8 16H8.7l2.35-4z" fill="#ffffff"/></svg>
+      </button>
       {# Commented out: workspace grid icon now on subjects-btn #}
       {# <button type="button" class="icon-btn workspace-btn" disabled data-i18n-title="openAnnotationWorkspace" data-i18n-aria-label="openAnnotationWorkspace">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>

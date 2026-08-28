@@ -168,9 +168,23 @@
 }
 
 .resource-node-icon {
-  flex: none;
-  opacity: .75;
-  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 18px;
+  inline-size: 18px;
+  block-size: 18px;
+  color: color-mix(
+    in srgb,
+    var(--onto-theme-accent, #0ea5e9) 82%,
+    var(--onto-theme-foreground, #0f172a)
+  );
+}
+
+.resource-node-icon svg {
+  display: block;
+  inline-size: 16px;
+  block-size: 16px;
 }
 
 .resource-node-name {
@@ -371,8 +385,27 @@
   border: 1px solid rgba(148, 163, 184, .28);
   border-radius: 14px;
   padding: 0;
-  color: var(--onto-theme-foreground, #e5eefc);
-  background: var(--onto-theme-background, #0f172a);
+  color: var(--onto-theme-foreground, #0f172a);
+  background: var(--onto-theme-background, #ffffff);
+}
+
+/* annotation_editor.css / annotation_visual.css / annotation_workspace.css
+   read these -annotation-* tokens and only ship dark fallbacks. Bind them to
+   the page theme on every annotation dialog surface so the editor form,
+   workspace list, popovers and swatches follow light/dark like the rest of
+   the page instead of staying dark on a white surface. */
+.onto-annotation-dialog,
+.ontobdc-annotation-dialog {
+  --ontobdc-annotation-text: var(--onto-theme-foreground, #0f172a);
+  --ontobdc-annotation-input: color-mix(in srgb, var(--onto-theme-foreground, #0f172a) 5%, var(--onto-theme-background, #ffffff));
+  --ontobdc-annotation-line: color-mix(in srgb, var(--onto-theme-foreground, #0f172a) 22%, transparent);
+  --ontobdc-annotation-accent: var(--onto-theme-accent, #0284c7);
+  --ontobdc-annotation-highlight: color-mix(in srgb, var(--onto-theme-foreground, #0f172a) 24%, transparent);
+  --ontobdc-annotation-selected-stroke: var(--onto-theme-foreground, #0f172a);
+  --ontobdc-annotation-popover-background: var(--onto-theme-background, #ffffff);
+  --ontobdc-annotation-popover-border: color-mix(in srgb, var(--onto-theme-accent, #0284c7) 40%, transparent);
+  --ontobdc-annotation-popover-shadow: 0 18px 44px rgba(0, 0, 0, .22);
+  --ontobdc-annotation-action-hover: color-mix(in srgb, var(--onto-theme-foreground, #0f172a) 10%, transparent);
 }
 
 .onto-annotation-dialog::backdrop {
@@ -435,8 +468,8 @@
   flex-direction: column;
   overflow: auto;
   padding: 20px;
-  background: var(--onto-theme-background, #0f172a);
-  color: var(--onto-theme-foreground, #e5eefc);
+  background: var(--onto-theme-background, #ffffff);
+  color: var(--onto-theme-foreground, #0f172a);
 }
 
 .ontobdc-annotation-header {
@@ -470,6 +503,10 @@
   flex: 1;
   display: grid;
   grid-template-columns: 1fr minmax(280px, 360px);
+  /* Bound the single row to the dialog height so the stage scroller and
+     the editor panel each scroll their own overflow (a multi-page PDF,
+     a long form) instead of stretching the whole dialog. */
+  grid-template-rows: minmax(0, 1fr);
   gap: 20px;
   min-height: 0;
 }
@@ -558,6 +595,9 @@
 
 .ontobdc-annotation-stage-scroller {
   overflow: auto;
+  min-height: 0;
+  min-width: 0;
+  align-self: stretch;
   border-radius: 12px;
   background: rgba(255, 255, 255, .04);
 }
@@ -568,10 +608,20 @@
 }
 
 .ontobdc-annotation-stage img,
-.ontobdc-annotation-stage canvas {
+.ontobdc-annotation-stage canvas,
+.ontobdc-annotation-stage > .ontobdc-annotation-image {
   display: block;
   width: 100%;
   height: auto;
+}
+
+/* Multi-page PDF: pdfSurface() stacks one <canvas> per page inside this
+   wrapper. The wrapper box is page-width by total-height, matching the
+   overlay coordinate space exactly, so no gaps between pages. */
+.ontobdc-annotation-stage > div.ontobdc-annotation-image > canvas {
+  width: 100%;
+  height: auto;
+  display: block;
 }
 
 .ontobdc-annotation-overlay,

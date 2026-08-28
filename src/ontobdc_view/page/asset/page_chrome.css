@@ -306,6 +306,82 @@ html[data-theme="dark"] .onto-page-body.tile #arrowhead polygon {
   fill: var(--onto-theme-primary, #90caf9);
 }
 
+/* Shared title, description and 5W2H inline editor. */
+.onto-inline-edit {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 8px;
+  min-inline-size: 0;
+}
+
+.onto-inline-edit-value {
+  min-inline-size: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.onto-inline-edit-value.is-empty {
+  color: color-mix(in srgb, var(--onto-theme-on-surface, #0f172a) 64%, transparent);
+  font-style: italic;
+}
+
+.onto-inline-edit-input {
+  box-sizing: border-box;
+  inline-size: 100%;
+  min-inline-size: 0;
+  min-block-size: 38px;
+  padding: 8px 10px;
+  border: 1px solid var(--onto-theme-outline-variant, #64748b);
+  border-radius: 8px;
+  background: var(--onto-theme-surface, #fff);
+  color: var(--onto-theme-on-surface, #0f172a);
+  font: inherit;
+  line-height: 1.45;
+  resize: vertical;
+}
+
+.onto-inline-edit-input:focus {
+  outline: 2px solid color-mix(in srgb, var(--onto-theme-primary, #00cf63) 58%, transparent);
+  outline-offset: 1px;
+}
+
+.onto-inline-edit-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: none;
+}
+
+.onto-inline-edit-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 32px;
+  block-size: 32px;
+  padding: 6px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--onto-theme-primary, #008f46);
+  cursor: pointer;
+}
+
+.onto-inline-edit-btn:hover,
+.onto-inline-edit-btn:focus-visible {
+  background: color-mix(in srgb, var(--onto-theme-primary, #00cf63) 14%, transparent);
+}
+
+.onto-inline-edit-btn:disabled { opacity: .45; cursor: wait; }
+.onto-inline-edit-btn svg { inline-size: 18px; block-size: 18px; }
+.onto-inline-edit-btn--cancel { color: color-mix(in srgb, var(--onto-theme-on-surface, #0f172a) 64%, transparent); }
+.onto-inline-edit-error {
+  grid-column: 1 / -1;
+  color: var(--onto-theme-primary, #008f46);
+  font-size: 12px;
+  font-weight: 500;
+}
+
 html[data-theme="dark"] .onto-page-body.tile .gantt-svg .gantt-arrow {
   stroke: var(--onto-theme-primary, #90caf9);
 }

@@ -104,6 +104,94 @@
   }
   .fallback a:hover { text-decoration: underline; }
   .fallback .muted { color: var(--muted); font-size: 13px; }
+
+  /* Default view (unrecognised type): the file's RO-Crate metadata. */
+  .meta {
+    align-self: flex-start;
+    width: 100%;
+    max-width: 640px;
+    margin: 0 auto;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .meta-title {
+    font-size: 16px;
+    font-weight: 700;
+    word-break: break-word;
+  }
+  .meta .muted { color: var(--muted); font-size: 13px; }
+  .meta-list {
+    margin: 4px 0 0;
+    display: grid;
+    grid-template-columns: minmax(0, max-content) minmax(0, 1fr);
+    gap: 6px 16px;
+    font-size: 13px;
+  }
+  .meta-list dt {
+    color: var(--muted);
+    font-weight: 600;
+  }
+  .meta-list dd {
+    margin: 0;
+    word-break: break-word;
+  }
+  .meta a {
+    color: var(--accent);
+    font-weight: 700;
+    text-decoration: none;
+    align-self: flex-start;
+  }
+  .meta a:hover { text-decoration: underline; }
+
+  /* .eml email view. */
+  .email {
+    flex: 1;
+    min-width: 0;
+    align-self: stretch;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 20px;
+  }
+  .email-subject {
+    font-size: 17px;
+    font-weight: 700;
+    word-break: break-word;
+  }
+  .email-meta {
+    margin: 0;
+    display: grid;
+    grid-template-columns: minmax(0, max-content) minmax(0, 1fr);
+    gap: 4px 14px;
+    font-size: 13px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .email-meta dt { color: var(--muted); font-weight: 600; }
+  .email-meta dd { margin: 0; word-break: break-word; }
+  .email-body {
+    flex: 1;
+    min-height: 260px;
+    display: flex;
+  }
+  .email-text {
+    flex: 1;
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .email-html {
+    flex: 1;
+    width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: #ffffff;
+  }
 </style>
 </head>
 <body>
@@ -222,6 +310,309 @@
       viewer.replaceChildren(table);
     }
 
+    // ── Default view: the file's RO-Crate metadata ──────────────────────
+    // The Surface only ever ships RO-Crate metadata, so when the type is not
+    // one we render natively we still have something meaningful to show:
+    // this file's own entry from `.__ontobdc__/ro-crate-metadata.json`
+    // (resolved through the page's <base>, same as every other fetch here).
+    const RO_CRATE_PATH = ".__ontobdc__/ro-crate-metadata.json";
+
+    const META_LABELS = {
+      "@type": "Type",
+      name: "Name",
+      description: "Description",
+      encodingFormat: "Format",
+      contentSize: "Size",
+      dateCreated: "Created",
+      dateModified: "Modified",
+      datePublished: "Published",
+      author: "Author",
+      creator: "Creator",
+      publisher: "Publisher",
+      license: "License",
+      identifier: "Identifier",
+      url: "URL",
+      sha256: "SHA-256",
+      contentUrl: "Content URL",
+    };
+    const META_PRIORITY = [
+      "@type", "name", "description", "encodingFormat", "contentSize",
+      "dateCreated", "dateModified", "datePublished",
+      "author", "creator", "publisher", "license", "identifier", "url",
+    ];
+    const META_HIDDEN = new Set(["@id", "@reverse", "hasPart", "isPartOf"]);
+
+    function flattenJsonLdValue(value) {
+      if (value === null || value === undefined) return "";
+      if (Array.isArray(value)) {
+        return value.map(flattenJsonLdValue).filter(Boolean).join(", ");
+      }
+      if (typeof value === "object") {
+        if ("@value" in value) return String(value["@value"]);
+        if ("name" in value) return String(value.name);
+        if ("@id" in value) return String(value["@id"]);
+        return JSON.stringify(value);
+      }
+      return String(value);
+    }
+
+    function formatBytes(value) {
+      const bytes = Number(flattenJsonLdValue(value));
+      if (!Number.isFinite(bytes) || bytes < 0) return flattenJsonLdValue(value);
+      if (bytes < 1024) return `${bytes} B`;
+      const units = ["KB", "MB", "GB", "TB"];
+      let size = bytes / 1024;
+      let unit = 0;
+      while (size >= 1024 && unit < units.length - 1) { size /= 1024; unit += 1; }
+      return `${size.toFixed(size < 10 ? 1 : 0)} ${units[unit]}`;
+    }
+
+    function normaliseId(value) {
+      let out = String(value || "").replace(/^\.?\//, "");
+      try { out = decodeURIComponent(out); } catch (_) { /* keep as-is */ }
+      return out;
+    }
+
+    async function fetchRoCrateEntity(filePath) {
+      const response = await fetch(RO_CRATE_PATH);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const crate = await response.json();
+      const graph = Array.isArray(crate && crate["@graph"]) ? crate["@graph"] : [];
+      const target = normaliseId(filePath);
+      const suffix = target.split("/").pop();
+      let looseMatch = null;
+      for (const entity of graph) {
+        if (!entity || !entity["@id"]) continue;
+        const id = normaliseId(entity["@id"]);
+        if (id === target) return entity;
+        if (!looseMatch && suffix && id.split("/").pop() === suffix) looseMatch = entity;
+      }
+      return looseMatch;
+    }
+
+    function renderRoCrateMetadata(entity) {
+      const wrap = document.createElement("div");
+      wrap.className = "meta";
+
+      const heading = document.createElement("div");
+      heading.className = "meta-title";
+      heading.textContent = (entity && flattenJsonLdValue(entity.name)) || title;
+      wrap.appendChild(heading);
+
+      const note = document.createElement("div");
+      note.className = "muted";
+      note.textContent = entity
+        ? "RO-Crate metadata"
+        : "No RO-Crate metadata found for this file.";
+      wrap.appendChild(note);
+
+      if (entity) {
+        const list = document.createElement("dl");
+        list.className = "meta-list";
+        const seen = new Set();
+        const addRow = (key) => {
+          if (seen.has(key) || META_HIDDEN.has(key)) return;
+          if (!(key in entity)) return;
+          const raw = entity[key];
+          const text = key === "contentSize" ? formatBytes(raw) : flattenJsonLdValue(raw);
+          if (!text) return;
+          seen.add(key);
+          const dt = document.createElement("dt");
+          dt.textContent = META_LABELS[key] || key.replace(/^https?:\/\/schema\.org\//, "");
+          const dd = document.createElement("dd");
+          dd.textContent = text;
+          list.append(dt, dd);
+        };
+        META_PRIORITY.forEach(addRow);
+        Object.keys(entity).forEach(addRow);
+        if (list.childElementCount) wrap.appendChild(list);
+      }
+
+      const link = document.createElement("a");
+      link.href = href;
+      link.target = "_blank";
+      link.rel = "noopener";
+      link.textContent = "Open file in new tab";
+      wrap.appendChild(link);
+
+      viewer.replaceChildren(wrap);
+    }
+
+    function renderDefault() {
+      fetchRoCrateEntity(path)
+        .then((entity) => renderRoCrateMetadata(entity))
+        .catch(() => renderFallback());
+    }
+
+    // ── .eml (RFC 822 email) ───────────────────────────────────────────
+    function decodeMimeWords(input) {
+      return String(input || "")
+        // Join adjacent encoded-words separated only by whitespace (RFC 2047).
+        .replace(/(=\?[^?]+\?[BbQq]\?[^?]*\?=)\s+(?==\?[^?]+\?[BbQq]\?)/g, "$1")
+        .replace(/=\?([^?]+)\?([BbQq])\?([^?]*)\?=/g, (whole, charset, enc, data) => {
+          try {
+            let bytes;
+            if (enc.toUpperCase() === "B") {
+              const binary = atob(data.replace(/\s+/g, ""));
+              bytes = Uint8Array.from(binary, (ch) => ch.charCodeAt(0));
+            } else {
+              const q = data
+                .replace(/_/g, " ")
+                .replace(/=([0-9A-Fa-f]{2})/g, (m, hex) => String.fromCharCode(parseInt(hex, 16)));
+              bytes = Uint8Array.from(q, (ch) => ch.charCodeAt(0));
+            }
+            return new TextDecoder(String(charset).toLowerCase()).decode(bytes);
+          } catch (_) {
+            return whole;
+          }
+        });
+    }
+
+    function splitHeadersBody(raw) {
+      const match = raw.match(/\r?\n\r?\n/);
+      if (!match) return { rawHeaders: raw, body: "" };
+      return {
+        rawHeaders: raw.slice(0, match.index),
+        body: raw.slice(match.index + match[0].length),
+      };
+    }
+
+    function parseHeaders(rawHeaders) {
+      const unfolded = String(rawHeaders || "").replace(/\r?\n[ \t]+/g, " ");
+      const headers = {};
+      for (const line of unfolded.split(/\r?\n/)) {
+        const idx = line.indexOf(":");
+        if (idx === -1) continue;
+        const key = line.slice(0, idx).trim().toLowerCase();
+        const value = line.slice(idx + 1).trim();
+        if (!key) continue;
+        headers[key] = headers[key] === undefined ? value : `${headers[key]}, ${value}`;
+      }
+      return headers;
+    }
+
+    function parseContentType(value) {
+      const segments = String(value || "").split(";");
+      const type = (segments.shift() || "").trim().toLowerCase();
+      const params = {};
+      for (const segment of segments) {
+        const eq = segment.indexOf("=");
+        if (eq === -1) continue;
+        const name = segment.slice(0, eq).trim().toLowerCase();
+        params[name] = segment.slice(eq + 1).trim().replace(/^"|"$/g, "");
+      }
+      return { type, params };
+    }
+
+    function decodeEmailBody(body, encoding, charset) {
+      const enc = String(encoding || "").toLowerCase().trim();
+      try {
+        if (enc === "base64") {
+          const binary = atob(String(body).replace(/\s+/g, ""));
+          const bytes = Uint8Array.from(binary, (ch) => ch.charCodeAt(0));
+          return new TextDecoder((charset || "utf-8").toLowerCase()).decode(bytes);
+        }
+        if (enc === "quoted-printable") {
+          const decoded = String(body)
+            .replace(/=\r?\n/g, "")
+            .replace(/=([0-9A-Fa-f]{2})/g, (m, hex) => String.fromCharCode(parseInt(hex, 16)));
+          const bytes = Uint8Array.from(decoded, (ch) => ch.charCodeAt(0));
+          return new TextDecoder((charset || "utf-8").toLowerCase()).decode(bytes);
+        }
+      } catch (_) {
+        return String(body);
+      }
+      return String(body);
+    }
+
+    function parseEml(raw) {
+      const top = splitHeadersBody(raw);
+      const headers = parseHeaders(top.rawHeaders);
+      const result = { headers, text: "", html: "" };
+
+      const consumePart = (partHeaders, partBody) => {
+        const ct = parseContentType(partHeaders["content-type"] || "text/plain");
+        const cte = partHeaders["content-transfer-encoding"] || "";
+        if (ct.type.startsWith("multipart/")) {
+          walkMultipart(partBody, ct.params.boundary);
+        } else if (ct.type === "text/html" && !result.html) {
+          result.html = decodeEmailBody(partBody, cte, ct.params.charset);
+        } else if ((ct.type === "text/plain" || !ct.type) && !result.text) {
+          result.text = decodeEmailBody(partBody, cte, ct.params.charset);
+        }
+      };
+
+      function walkMultipart(body, boundary) {
+        if (!boundary) return;
+        const parts = body.split(`--${boundary}`);
+        for (let part of parts) {
+          part = part.replace(/^\r?\n/, "");
+          if (!part || part === "--" || part.startsWith("--")) continue;
+          const split = splitHeadersBody(part);
+          // The CRLF that precedes the next boundary delimiter belongs to the
+          // delimiter, not the part body (RFC 2046 §5.1.1).
+          consumePart(parseHeaders(split.rawHeaders), split.body.replace(/\r?\n$/, ""));
+        }
+      }
+
+      const rootType = parseContentType(headers["content-type"] || "text/plain");
+      if (rootType.type.startsWith("multipart/")) {
+        walkMultipart(top.body, rootType.params.boundary);
+      } else {
+        consumePart(headers, top.body);
+      }
+      return result;
+    }
+
+    function renderEmail(mail) {
+      const wrap = document.createElement("div");
+      wrap.className = "email";
+
+      const subject = document.createElement("div");
+      subject.className = "email-subject";
+      subject.textContent = decodeMimeWords(mail.headers.subject || "") || "(no subject)";
+      wrap.appendChild(subject);
+
+      const meta = document.createElement("dl");
+      meta.className = "email-meta";
+      const FIELDS = [
+        ["from", "From"], ["to", "To"], ["cc", "Cc"],
+        ["reply-to", "Reply-To"], ["date", "Date"],
+      ];
+      for (const [key, label] of FIELDS) {
+        if (!mail.headers[key]) continue;
+        const dt = document.createElement("dt");
+        dt.textContent = label;
+        const dd = document.createElement("dd");
+        dd.textContent = key === "date"
+          ? mail.headers[key]
+          : decodeMimeWords(mail.headers[key]);
+        meta.append(dt, dd);
+      }
+      if (meta.childElementCount) wrap.appendChild(meta);
+
+      const bodyBox = document.createElement("div");
+      bodyBox.className = "email-body";
+      if (mail.html) {
+        const frame = document.createElement("iframe");
+        frame.className = "email-html";
+        // sandbox="" — no scripts, no same-origin: the message renders but
+        // cannot run code or reach anything.
+        frame.setAttribute("sandbox", "");
+        frame.setAttribute("referrerpolicy", "no-referrer");
+        frame.srcdoc = mail.html;
+        bodyBox.appendChild(frame);
+      } else {
+        const pre = document.createElement("pre");
+        pre.className = "email-text";
+        pre.textContent = mail.text || "(no message body)";
+        bodyBox.appendChild(pre);
+      }
+      wrap.appendChild(bodyBox);
+
+      viewer.replaceChildren(wrap);
+    }
+
     if (!path) {
       renderFallback();
     } else if (IMAGE_EXTENSIONS.has(extension)) {
@@ -259,8 +650,16 @@
           renderCsvTable(rows);
         })
         .catch((error) => renderFallback(error && error.message ? error.message : "Unable to load CSV"));
+    } else if (extension === "eml") {
+      fetch(href)
+        .then((response) => {
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          return response.text();
+        })
+        .then((text) => renderEmail(parseEml(text)))
+        .catch((error) => renderFallback(error && error.message ? error.message : "Unable to load email"));
     } else {
-      renderFallback();
+      renderDefault();
     }
   </script>
 </body>

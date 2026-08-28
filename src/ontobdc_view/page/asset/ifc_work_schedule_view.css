@@ -420,13 +420,54 @@ html:-webkit-full-screen .gantt-right {
   color: color-mix(in srgb, var(--onto-theme-foreground, #0f172a) 80%, transparent);
 }
 
-.onto-gantt-edit-field input[type="date"] {
+.onto-gantt-edit-field input[type="date"],
+.onto-gantt-edit-field input[type="number"],
+.onto-gantt-edit-field input[type="text"] {
   font: inherit;
   padding: 6px 8px;
   border-radius: 8px;
   border: 1px solid color-mix(in srgb, var(--onto-theme-foreground, #0f172a) 24%, transparent);
   background: var(--onto-theme-background, #ffffff);
   color: var(--onto-theme-foreground, #0f172a);
+}
+
+.onto-gantt-edit-divider {
+  width: 100%;
+  height: 0;
+  margin: 6px 0 0;
+  border: 0;
+  border-top: 1px solid color-mix(in srgb, var(--onto-theme-foreground, #0f172a) 14%, transparent);
+}
+
+.onto-gantt-edit-danger-row {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.onto-gantt-edit-delete-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--gantt-critical-fill, #e53e3e);
+  cursor: pointer;
+}
+
+.onto-gantt-edit-delete-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.onto-gantt-edit-delete-btn:hover {
+  background: color-mix(in srgb, var(--gantt-critical-fill, #e53e3e) 14%, transparent);
+}
+
+.onto-gantt-edit-delete-btn:disabled {
+  opacity: .5;
+  cursor: default;
 }
 
 .onto-gantt-edit-error {
@@ -468,4 +509,87 @@ html:-webkit-full-screen .gantt-right {
 .onto-gantt-edit-btn-primary:disabled {
   opacity: .6;
   cursor: default;
+}
+
+/* The printer action uses the browser's native print/PDF pipeline. Keep the
+ * semantic title and the complete 4D table/chart, but remove interactive
+ * chrome and any viewport clipping from the printed document. */
+@page {
+  size: A4 landscape;
+  margin: 10mm;
+}
+
+@media print {
+  :root {
+    color-scheme: light;
+    --gantt-paper: #ffffff;
+    --gantt-ink: #0f172a;
+    --gantt-paper-muted: #f1f5f9;
+    --gantt-paper-line: #cbd5e1;
+  }
+
+  html,
+  body {
+    width: auto !important;
+    height: auto !important;
+    overflow: visible !important;
+    background: var(--gantt-paper) !important;
+    color: var(--gantt-ink) !important;
+  }
+
+  .header-actions,
+  .back-link,
+  .dimension-cards,
+  dialog,
+  .onto-inline-edit-actions,
+  .onto-inline-edit-error {
+    display: none !important;
+  }
+
+  .onto-page,
+  .onto-page-body.tile {
+    width: 100% !important;
+    max-width: none !important;
+    height: auto !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+
+  .onto-page-header {
+    min-height: 0 !important;
+    margin: 0 0 6mm !important;
+    padding: 0 0 3mm !important;
+    border-bottom: 1px solid var(--gantt-paper-line) !important;
+  }
+
+  .gantt-container {
+    width: 100% !important;
+    max-height: none !important;
+    grid-template-columns: 38% 62% !important;
+    overflow: visible !important;
+    break-inside: avoid-page;
+    background: var(--gantt-paper) !important;
+    color: var(--gantt-ink) !important;
+  }
+
+  .gantt-left,
+  .gantt-right {
+    overflow: visible !important;
+  }
+
+  .gantt-table th,
+  .gantt-timeline-header {
+    position: static !important;
+    background: var(--gantt-paper-muted) !important;
+    color: var(--gantt-ink) !important;
+  }
+
+  .gantt-bar-text {
+    fill: var(--gantt-ink) !important;
+  }
 }

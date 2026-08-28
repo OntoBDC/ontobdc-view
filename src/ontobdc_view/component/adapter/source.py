@@ -141,6 +141,38 @@ def _read_brand_asset_markup(assets: Path, svg_filename: str) -> Optional[str]:
     return _read_img_markup_if_png(png_path)
 
 
+def _packaged_infobim_brand() -> Optional[Dict[str, str]]:
+    """Load InfoBIM branding from the installed InfoBIM distribution.
+
+    A regular wheel does not retain the repository-level ``src/asset``
+    directory.  InfoBIM therefore ships its browser assets inside the
+    ``infobim`` package, where ``importlib.resources`` can read them from
+    either a normal installation or a zipped importer without relying on
+    the current working directory or network access.
+    """
+    try:
+        assets = files("infobim").joinpath(
+            "view", "plugin", "asset", "image"
+        )
+        mark = assets.joinpath("InfoBIMBrand.svg").read_text(encoding="utf-8")
+        logotype = assets.joinpath("InfoBIMLogotype.svg").read_text(
+            encoding="utf-8"
+        )
+    except (FileNotFoundError, ModuleNotFoundError, OSError, TypeError):
+        return None
+
+    if "<svg" not in mark.lstrip()[:512].lower():
+        return None
+    if "<svg" not in logotype.lstrip()[:512].lower():
+        return None
+    return {
+        "name": "InfoBIM",
+        "mark_svg": mark.strip(),
+        "logotype_svg": logotype.strip(),
+        "slogan": "",
+    }
+
+
 def _candidate_brand_roots(root_path: Optional[str]) -> List[Path]:
     """Return filesystem paths where a product marker dir may reasonably live.
 
@@ -292,6 +324,10 @@ def _resolve_brand_from_assets(root_path: Optional[str]) -> Optional[Dict[str, s
                 brand_markup = _read_brand_asset_markup(assets, brand_file)
                 logotype_markup = _read_brand_asset_markup(assets, logotype_file)
                 if brand_markup is None or logotype_markup is None:
+                    if hidden == ".__infobim__":
+                        packaged_brand = _packaged_infobim_brand()
+                        if packaged_brand is not None:
+                            return packaged_brand
                     continue
                 return {
                     "name": name,

@@ -124,6 +124,8 @@
 .gantt-filter-toggle-thumb { display:block; width:20px; height:20px; border-radius:50%; background:var(--onto-theme-background, #fff); box-shadow:0 1px 4px rgba(0,0,0,.28); transition:.18s ease; }
 .gantt-filter-toggle input:checked + .gantt-filter-toggle-track { background:var(--onto-theme-accent, #2563eb); }
 .gantt-filter-toggle input:checked + .gantt-filter-toggle-track .gantt-filter-toggle-thumb { transform:translateX(18px); }
+.gantt-filter-toggle-row.is-disabled { cursor:not-allowed; opacity:.5; }
+.gantt-filter-toggle input:disabled + .gantt-filter-toggle-track { cursor:not-allowed; }
 .gantt-filter-actions { display:flex; justify-content:flex-end; gap:10px; margin-top:2px; }
 .gantt-filter-actions button { padding:8px 14px; border-radius:8px; cursor:pointer; }
 .gantt-filter-reset { background:transparent; color:inherit; border:1px solid color-mix(in srgb, var(--onto-theme-foreground, #111827) 22%, transparent); }
@@ -152,13 +154,19 @@
       <button type="button" class="icon-btn workspace-btn" disabled style="display:none" aria-hidden="true" data-i18n-title="openAnnotationWorkspace" data-i18n-aria-label="openAnnotationWorkspace">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/></svg>
       </button>
-      <button type="button" class="icon-btn gantt-filter-btn" data-i18n-title="openGanttFilter" data-i18n-aria-label="openGanttFilter">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+      <button type="button" class="icon-btn gantt-filter-btn" disabled data-i18n-title="openGanttFilter" data-i18n-aria-label="openGanttFilter">
+        <svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M6 2v6h.01L6 8.01 10 12l-4 4 .01.01H6V22h12v-5.99h-.01L18 16l-4-4 4-3.99-.01-.01H18V2H6z"/></svg>
       </button>
       <button type="button" class="icon-btn gantt-add-task-btn" disabled data-i18n-title="addTaskTitle" data-i18n-aria-label="addTask">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
       </button>
-      <button type="button" class="icon-btn gantt-fullscreen-btn" data-i18n-title="enterFullscreen" data-i18n-aria-label="enterFullscreen" aria-label="fullscreen">
+      <button type="button" class="icon-btn gantt-print-btn" disabled data-i18n-title="printGanttTitle" data-i18n-aria-label="printGantt" aria-label="print">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/><line x1="18" y1="12" x2="18.01" y2="12"/></svg>
+      </button>
+      <button type="button" class="icon-btn gantt-open-workbook-btn" disabled data-i18n-title="openWorkbookTitle" data-i18n-aria-label="openWorkbook" aria-label="open workbook">
+        <svg viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="2.5" fill="#1D6F42"/><path d="M8.7 8h2.1l1.2 2.15L13.2 8h2.1l-2.35 4 2.35 4h-2.1l-1.2-2.15L10.8 16H8.7l2.35-4z" fill="#ffffff"/></svg>
+      </button>
+      <button type="button" class="icon-btn gantt-fullscreen-btn" disabled data-i18n-title="enterFullscreen" data-i18n-aria-label="enterFullscreen" aria-label="fullscreen">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
       </button>
     </div>
@@ -167,7 +175,7 @@
     <div class="body"><div class="name"></div><div class="identifier"></div></div>
     <div class="fields"></div>
     <div class="gantt-container">
-      <div class="gantt-left"><table class="gantt-table"><thead><tr><th>WBS</th><th>Task Name</th><th>Start</th><th>Finish</th><th>Duration</th><th>%</th></tr></thead><tbody id="gantt-tbody"></tbody></table></div>
+      <div class="gantt-left"><table class="gantt-table"><thead><tr><th data-i18n="ganttColumnWbs">WBS</th><th data-i18n="ganttColumnTaskName">Task Name</th><th data-i18n="ganttColumnStart">Start</th><th data-i18n="ganttColumnFinish">Finish</th><th data-i18n="ganttColumnDuration">Duration</th><th>%</th></tr></thead><tbody id="gantt-tbody"></tbody></table></div>
       <div class="gantt-right"><div class="gantt-timeline-header" id="gantt-timeline-header"></div><svg class="gantt-svg" id="gantt-svg"><defs><marker id="arrowhead" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><polygon points="0 0, 10 3, 0 6" fill="#000"/></marker></defs></svg></div>
     </div>
   </section>
@@ -179,7 +187,7 @@
     <div class="gantt-filter-heading"><h2 id="gantt-filter-title" data-i18n="ganttFilterTitle"></h2><button type="button" class="icon-btn gantt-filter-close" data-i18n-title="ganttFilterClose" data-i18n-aria-label="ganttFilterClose">×</button></div>
     <label class="gantt-filter-field"><span data-i18n="ganttFilterStartDate"></span><input type="date" id="gantt-filter-start"></label>
     <label class="gantt-filter-field"><span data-i18n="ganttFilterEndDate"></span><input type="date" id="gantt-filter-end"></label>
-    <label class="gantt-filter-toggle-row" for="gantt-filter-critical"><span data-i18n="ganttFilterCriticalPath"></span><span class="gantt-filter-toggle"><input type="checkbox" id="gantt-filter-critical"><span class="gantt-filter-toggle-track" aria-hidden="true"><span class="gantt-filter-toggle-thumb"></span></span></span></label>
+    <label class="gantt-filter-toggle-row is-disabled" for="gantt-filter-critical" aria-disabled="true"><span data-i18n="ganttFilterCriticalPath"></span><span class="gantt-filter-toggle"><input type="checkbox" id="gantt-filter-critical" disabled><span class="gantt-filter-toggle-track" aria-hidden="true"><span class="gantt-filter-toggle-thumb"></span></span></span></label>
     <div class="gantt-filter-actions"><button type="button" class="gantt-filter-reset" data-i18n="ganttFilterReset"></button><button type="submit" class="gantt-filter-apply" data-i18n="ganttFilterApply"></button></div>
   </form>
 </dialog>
@@ -294,6 +302,12 @@
 
   function loadOne(kind, name, suffix, index) {
     var s = document.createElement("script");
+    // Dynamically-inserted scripts are async by default and would run in
+    // network-race order; async=false forces execution in insertion order
+    // (SCRIPT_NAMES order), which the runtime depends on — i18n_apply must
+    // attach runtime.t before container_connection/pyodide_runtime capture
+    // it, pyodide_runtime before task_table_timeline, and so on.
+    s.async = false;
     s.defer = true;
     var rel = kind === "pyodide" ? PYODIDE_JS_PATH : ASSET_SCRIPT_PREFIX + name + suffix;
     var url = base + rel;
@@ -502,7 +516,9 @@ window.addEventListener("load", function () {
     originalRunRender();
     rt.state.schedule = schedule;
     if (typeof rt.runArrows === "function") rt.runArrows();
-    openBtn.dataset.filterActive = String(Boolean(filter.start || filter.end || !filter.showCritical));
+    // The critical-path toggle is disabled for now, so only the date range
+    // marks the filter as active.
+    openBtn.dataset.filterActive = String(Boolean(filter.start || filter.end));
   }
   if (originalRunParse) {
     rt.runParse = function () {

@@ -55,20 +55,21 @@
   }
 
   function createPage(configuration){
-    const options=Object.assign({annotations:[],subjects:[],subjectUri:null,labels:{},onOpen:function(){}},configuration||{});
+    const options=Object.assign({annotations:[],threads:[],threadId:null,labels:{},onOpen:function(){},onCreateThread:null},configuration||{});
     const hash=new URLSearchParams(location.hash.slice(1));
     let active=hash.get("tab")||"space",selectedAnnotation=hash.get("annotation");
-    let currentSubjectUri=options.subjectUri;
+    let currentThreadId=options.threadId!=null?options.threadId:hash.get("thread");
+    let creatingThread=false;
     const root=document.createElement("article");root.className=CSS;
 
-    function subjectByUri(uri){
-      if(uri==null)return{uri:null,label:options.labels.unassigned||"Unassigned subjects",description:"",broader:[],narrower:[]};
-      return options.subjects.find(s=>s.uri===uri)||{uri,label:null,description:"",broader:[],narrower:[]};
+    function threadById(id){
+      if(id==null)return{id:null,label:options.labels.unassigned||"Unassigned threads",description:""};
+      return options.threads.find(s=>s.id===id)||{id,label:null,description:""};
     }
-    function annotationsFor(uri){
-      return options.annotations.filter(a=>uri?values(a.subjects).includes(uri):!values(a.subjects).length);
+    function annotationsFor(id){
+      return options.annotations.filter(a=>id?values(a.threads).includes(id):!values(a.threads).length);
     }
-    function switchSubject(uri){currentSubjectUri=uri;selectedAnnotation=null;render();}
+    function switchThread(id){currentThreadId=id;selectedAnnotation=null;render();}
     function switchTab(name){active=name;render();}
 
     function item(a,snippetLabel){
@@ -90,48 +91,79 @@
     function itemMeta(el,text){const meta=document.createElement("span");meta.className=`${CSS}-item-meta`;meta.textContent=text;el.querySelector(`.${CSS}-item-body`).append(meta);return el;}
     function itemPrefix(el,text){const snippet=el.querySelector(`.${CSS}-item-snippet`);const tag=document.createElement("span");tag.className=`${CSS}-role-tag`;tag.textContent=text;snippet.prepend(tag);return el;}
 
+    function buildThreadCreator(){
+      const wrapper=document.createElement("div");wrapper.className=`${CSS}-create`;
+      const toggle=document.createElement("button");toggle.type="button";toggle.className=`${CSS}-create-toggle`;
+      toggle.textContent=(creatingThread?"– ":"+ ")+(options.labels.newThread||"New thread");
+      toggle.onclick=()=>{creatingThread=!creatingThread;render();};
+      wrapper.append(toggle);
+      if(creatingThread){
+        const form=document.createElement("div");form.className=`${CSS}-create-form`;
+        const name=document.createElement("input");name.type="text";name.placeholder=options.labels.threadName||"Name";name.className=`${CSS}-create-name`;
+        const description=document.createElement("input");description.type="text";description.placeholder=options.labels.threadDescription||"Description";description.className=`${CSS}-create-description`;
+        const confirm=document.createElement("button");confirm.type="button";confirm.className=`${CSS}-create-confirm`;confirm.textContent=options.labels.createThread||"Create";
+        const error=document.createElement("small");error.className=`${CSS}-create-error`;error.hidden=true;
+        confirm.onclick=async()=>{
+          const label=name.value.trim();
+          if(!label){name.focus();return;}
+          if(typeof options.onCreateThread!=="function")return;
+          confirm.disabled=true;
+          try{
+            const thread=await options.onCreateThread(label,description.value.trim());
+            if(thread&&thread.id){
+              if(!options.threads.some(t=>t.id===thread.id))options.threads.push(thread);
+              creatingThread=false;
+              currentThreadId=thread.id;
+            }
+            render();
+          }catch(creationError){
+            error.textContent=(creationError&&creationError.message)||String(creationError);
+            error.hidden=false;
+            confirm.disabled=false;
+          }
+        };
+        form.append(name,description,confirm,error);
+        wrapper.append(form);
+      }
+      return wrapper;
+    }
+
     function buildSidebar(){
       const aside=document.createElement("aside");aside.className=`${CSS}-sidebar`;
-      const eyebrow=document.createElement("p");eyebrow.className=`${CSS}-sidebar-eyebrow`;eyebrow.textContent=options.labels.subjects||"Subjects";
+      const eyebrow=document.createElement("p");eyebrow.className=`${CSS}-sidebar-eyebrow`;eyebrow.textContent=options.labels.threads||"Threads";
       const list=document.createElement("div");list.className=`${CSS}-list`;
-      const entries=[subjectByUri(null)].concat(options.subjects);
+      const entries=[threadById(null)].concat(options.threads);
       entries.forEach(s=>{
-        const isActive=s.uri===currentSubjectUri;
+        const isActive=s.id===currentThreadId;
         const b=document.createElement("button");b.type="button";b.setAttribute("aria-pressed",String(isActive));
         const label=document.createElement("span");label.className=`${CSS}-item-label`;
         if(s.label){label.textContent=s.label;}
-        else if(s.uri==null){label.classList.add("is-unlabeled");label.textContent=options.labels.unassigned||"Unassigned subjects";}
-        else{label.classList.add("is-unlabeled");label.textContent=options.labels.unlabeled||"Unlabeled subject";}
-        const count=document.createElement("span");count.className=`${CSS}-item-count`;count.textContent=String(annotationsFor(s.uri).length);
+        else if(s.id==null){label.classList.add("is-unlabeled");label.textContent=options.labels.unassigned||"Unassigned threads";}
+        else{label.classList.add("is-unlabeled");label.textContent=options.labels.unlabeled||"Unlabeled thread";}
+        const count=document.createElement("span");count.className=`${CSS}-item-count`;count.textContent=String(annotationsFor(s.id).length);
         b.append(label,count);
-        b.onclick=()=>switchSubject(s.uri);
+        b.onclick=()=>switchThread(s.id);
         list.append(b);
       });
       aside.append(eyebrow,list);
+      if(typeof options.onCreateThread==="function")aside.append(buildThreadCreator());
       return aside;
     }
 
-    function buildHeader(subject,annotations){
+    function buildHeader(thread,annotations){
       const header=document.createElement("header");header.className=`${CSS}-header`;
-      const eyebrow=document.createElement("p");eyebrow.className=`${CSS}-eyebrow`;eyebrow.textContent=options.labels.subject||"Subject";
+      const eyebrow=document.createElement("p");eyebrow.className=`${CSS}-eyebrow`;eyebrow.textContent=options.labels.thread||"Thread";
       const title=document.createElement("h1");title.className=`${CSS}-title`;
-      if(subject.label){title.textContent=subject.label;}
-      else if(subject.uri==null){title.classList.add("is-unlabeled");title.textContent=options.labels.unassigned||"Unassigned subjects";}
-      else{title.classList.add("is-unlabeled");title.textContent=options.labels.unlabeled||"Unlabeled subject";}
+      if(thread.label){title.textContent=thread.label;}
+      else if(thread.id==null){title.classList.add("is-unlabeled");title.textContent=options.labels.unassigned||"Unassigned threads";}
+      else{title.classList.add("is-unlabeled");title.textContent=options.labels.unlabeled||"Unlabeled thread";}
       header.append(eyebrow,title);
-      if(subject.description){const description=document.createElement("p");description.className=`${CSS}-description`;description.textContent=subject.description;header.append(description);}
-      if(subject.uri){
+      if(thread.description){const description=document.createElement("p");description.className=`${CSS}-description`;description.textContent=thread.description;header.append(description);}
+      if(thread.id){
         const technical=document.createElement("div");technical.className=`${CSS}-technical`;
-        const tag=document.createElement("span");tag.className=`${CSS}-technical-tag`;tag.textContent="URI";
-        const code=document.createElement("code");code.textContent=subject.uri;
+        const tag=document.createElement("span");tag.className=`${CSS}-technical-tag`;tag.textContent="ID";
+        const code=document.createElement("code");code.textContent=thread.id;
         technical.append(tag,code);header.append(technical);
-      }
-      const broader=values(subject.broader),narrower=values(subject.narrower);
-      if(broader.length||narrower.length){
-        const hierarchy=document.createElement("div");hierarchy.className=`${CSS}-hierarchy`;
-        broader.forEach(label=>{const chip=document.createElement("span");chip.className=`${CSS}-chip`;chip.append(icon("up",11));chip.append(document.createTextNode(" "+label));hierarchy.append(chip);});
-        narrower.forEach(label=>{const chip=document.createElement("span");chip.className=`${CSS}-chip`;chip.append(document.createTextNode(label+" "));chip.append(icon("down",11));hierarchy.append(chip);});
-        header.append(hierarchy);
       }
       const people=new Set(),resources=new Set(),categories=new Set(),times=[];
       annotations.forEach(a=>{categories.add(a.type);[a.annotatedBy,a.modifiedBy,a.resolvedBy,(a.properties||{}).recordedBy].concat(values(a.assignedTo)).filter(Boolean).forEach(x=>people.add(x));[a.logicalSource,a.representationSource,(a.properties||{}).recordResource].filter(Boolean).forEach(x=>resources.add(x));[a.annotatedAt,a.created,a.modified,(a.properties||{}).recordedAt,(a.properties||{}).resolvedAt].filter(Boolean).forEach(x=>times.push(x));});
@@ -217,18 +249,18 @@
     function el(tag,className){const e=document.createElement(tag);if(className)e.className=className;return e;}
     function emptyState(){const p=document.createElement("p");p.className=`${CSS}-empty`;p.textContent=options.labels.empty||"No annotations.";return p;}
 
-    function writeHash(){const params=new URLSearchParams(location.hash.slice(1));params.set("subject",currentSubjectUri||"");params.set("tab",active);if(selectedAnnotation)params.set("annotation",selectedAnnotation);history.replaceState(null,"","#"+params.toString());}
+    function writeHash(){const params=new URLSearchParams(location.hash.slice(1));params.set("thread",currentThreadId||"");params.set("tab",active);if(selectedAnnotation)params.set("annotation",selectedAnnotation);history.replaceState(null,"","#"+params.toString());}
 
     function render(){
-      const subject=subjectByUri(currentSubjectUri);
-      const annotations=annotationsFor(currentSubjectUri);
+      const thread=threadById(currentThreadId);
+      const annotations=annotationsFor(currentThreadId);
       const detail=document.createElement("div");detail.className=`${CSS}-detail`;
       const tabs=buildTabs();
       const panel=document.createElement("div");panel.className=`${CSS}-panel`;
       if(active==="space")renderSpace(panel,annotations);
       else if(active==="timeline")renderTimeline(panel,annotations);
       else renderPeople(panel,annotations);
-      detail.append(buildHeader(subject,annotations),tabs,panel);
+      detail.append(buildHeader(thread,annotations),tabs,panel);
       root.replaceChildren(buildSidebar(),detail);
       writeHash();
     }
@@ -239,7 +271,7 @@
       setActive:value=>{active=value;render();},
       getActive:()=>active,
       selectAnnotation:id=>{selectedAnnotation=id;render();},
-      getSpatialClusters:()=>spatialClusters(annotationsFor(currentSubjectUri)),
+      getSpatialClusters:()=>spatialClusters(annotationsFor(currentThreadId)),
     });
   }
   global.OntoBDCSubjectPage=Object.freeze({create:createPage,spatialClusters:spatialClusters});

@@ -401,7 +401,30 @@ class GanttScriptAdapter(GanttScriptPort):
     var graph = parseJsonLd();
     rt.state.graph = graph;
 
-    var schedule = findByType(graph, rt.IFC_WORK_SCHEDULE_TYPE)[0] || null;
+    var schedules = findByType(graph, rt.IFC_WORK_SCHEDULE_TYPE);
+    var schedule = schedules[0] || null;
+    // The embedded graph and the connected workbook each contribute an
+    // IfcWorkSchedule node under a different @id, so they never dedupe. The
+    // embedded one carries dcterms:title/identifier; the workbook one carries
+    // the live GlobalId and the editable Name/Description. Fold just those
+    // onto the primary node so getGlobalId() resolves and an inline edit (or a
+    // reconnect after one) shows the saved value instead of snapping back to
+    // the baked-in title.
+    if (schedule && schedules.length > 1) {
+      var LIVE_SCHEDULE_KEYS = [
+        rt.IBIM_NS + "GlobalId",
+        rt.IBIM_NS + "Name",
+        rt.IBIM_NS + "Description",
+      ];
+      for (var si = 1; si < schedules.length; si++) {
+        for (var ki = 0; ki < LIVE_SCHEDULE_KEYS.length; ki++) {
+          var liveKey = LIVE_SCHEDULE_KEYS[ki];
+          if (schedules[si] && schedules[si][liveKey] !== undefined) {
+            schedule[liveKey] = schedules[si][liveKey];
+          }
+        }
+      }
+    }
     var rawTasks = findByType(graph, rt.IFC_TASK_TYPES);
     var rawTaskTimes = findByType(graph, rt.IFC_TASK_TIME_TYPES);
     var rawSequences = findByType(graph, rt.IFC_REL_SEQUENCE_TYPES);
@@ -633,7 +656,14 @@ class GanttScriptAdapter(GanttScriptPort):
     return text;
   };
   if (typeof runtime.t !== "function") runtime.t = __ontobdcIdentityT;
-  var t = (typeof runtime.t === "function") ? runtime.t : __ontobdcIdentityT;
+  // Resolve runtime.t at call time, not now: this IIFE can run before
+  // i18n_apply.js has attached the real translator (the loader inserts every
+  // script at once), so a captured reference would freeze to the identity
+  // fallback and every error message would surface as its raw i18n key.
+  var t = function t(key, vars) {
+    var fn = (typeof runtime.t === "function") ? runtime.t : __ontobdcIdentityT;
+    return fn(key, vars);
+  };
 
   // Normalize payload names: VIEW_PAYLOAD / WORKSTREAM_PAYLOAD / window.infoBimIfcWorkScheduleView
   // into one runtime.VIEW_PAYLOAD. Connection state may set runtime.WORKSTREAM_PAYLOAD after
@@ -645,14 +675,23 @@ class GanttScriptAdapter(GanttScriptPort):
 
   // Lazy wrapper for resolveContainerHandle so we don't crash if
   // container_connection.js hasn't defined runtime.resolveContainerHandle yet.
-  var resolveContainerHandle = function __ontobdcLazyResolveContainerHandle() {
+  // container_connection's resolveContainerHandle(selectedHandle) throws
+  // "not this schedule's dataset" when called with no handle (its BFS starts
+  // from `undefined`). Every standalone refresh here — the header Refresh
+  // button, and now createTask()/deleteTask() via refreshFromWorkbook() —
+  // calls it with no argument, so feed it the handle the connection already
+  // resolved instead of letting it re-discover from nothing.
+  var resolveContainerHandle = function __ontobdcLazyResolveContainerHandle(selectedHandle) {
     var fn = (typeof runtime.resolveContainerHandle === "function") ? runtime.resolveContainerHandle : null;
     if (!fn) {
       var err = new Error("No connected container available");
       return Promise.reject(err);
     }
+    var handleArg = selectedHandle
+      || (runtime.state && (runtime.state.datasetHandle || runtime.state.rawContainerHandle))
+      || undefined;
     try {
-      var result = fn.call(runtime);
+      var result = fn.call(runtime, handleArg);
       return Promise.resolve(result);
     } catch (caughtErr) {
       return Promise.reject(caughtErr);
@@ -1037,18 +1076,22 @@ class GanttScriptAdapter(GanttScriptPort):
   // no pyodide/openpyxl round-trip needed since SheetJS can both read and
   // write .xlsx natively in the browser.
   // ---------------------------------------------------------------------------
-  async function writeScheduleCellsToWorkbook(taskTimeGlobalId, startIso, finishIso) {
+  // completion is a 0-100 number, or null to leave the cell untouched. When it
+  // is given but the IfcTaskTime sheet has neither a Completion nor a
+  // PercentComplete column, a Completion column is appended to the header so the
+  // value has somewhere to live.
+  async function writeScheduleCellsToWorkbook(taskTimeGlobalId, startIso, finishIso, completion) {
     var fileHandle = runtime.state.workbookFileHandle;
     var wb = runtime.state.workbookSheetJs;
     if (!fileHandle || !wb) {
-      throw new Error("Nenhuma pasta conectada — conecte o container para salvar.");
+      throw new Error(t("ganttErrNoFolder"));
     }
     if (!window.XLSX || !window.XLSX.utils) {
-      throw new Error("SheetJS indisponível para salvar a planilha.");
+      throw new Error(t("ganttErrSheetJsUnavailable"));
     }
     var XLSX = window.XLSX;
     if (wb.SheetNames.indexOf("IfcTaskTime") === -1) {
-      throw new Error("A aba IfcTaskTime não foi encontrada na planilha conectada.");
+      throw new Error(t("ganttErrSheetMissing", { sheet: "IfcTaskTime" }));
     }
     var ws = wb.Sheets["IfcTaskTime"];
     var range = XLSX.utils.decode_range(ws["!ref"]);
@@ -1064,7 +1107,7 @@ class GanttScriptAdapter(GanttScriptPort):
     var startCol = colByName["ScheduleStart"];
     var finishCol = colByName["ScheduleFinish"];
     if (gidCol === undefined || startCol === undefined || finishCol === undefined) {
-      throw new Error("A aba IfcTaskTime não tem as colunas GlobalId/ScheduleStart/ScheduleFinish.");
+      throw new Error(t("ganttErrColumnsMissing", { sheet: "IfcTaskTime", columns: "GlobalId/ScheduleStart/ScheduleFinish" }));
     }
     var targetRow = -1;
     for (var r = headerRow + 1; r <= range.e.r; r++) {
@@ -1075,15 +1118,30 @@ class GanttScriptAdapter(GanttScriptPort):
       }
     }
     if (targetRow === -1) {
-      throw new Error("Linha da tarefa não encontrada na aba IfcTaskTime (GlobalId " + taskTimeGlobalId + ").");
+      throw new Error(t("ganttErrRowNotFound", { sheet: "IfcTaskTime", globalId: taskTimeGlobalId }));
     }
     ws[XLSX.utils.encode_cell({ r: targetRow, c: startCol })] = { t: "s", v: startIso };
     ws[XLSX.utils.encode_cell({ r: targetRow, c: finishCol })] = { t: "s", v: finishIso };
+
+    if (completion !== null && completion !== undefined) {
+      var completionCol = colByName["Completion"];
+      if (completionCol === undefined) completionCol = colByName["PercentComplete"];
+      if (completionCol === undefined) {
+        completionCol = range.e.c + 1;
+        ws[XLSX.utils.encode_cell({ r: headerRow, c: completionCol })] = { t: "s", v: "Completion" };
+        range.e.c = completionCol;
+        ws["!ref"] = XLSX.utils.encode_range(range);
+      }
+      ws[XLSX.utils.encode_cell({ r: targetRow, c: completionCol })] = { t: "n", v: completion };
+    }
 
     var out = XLSX.write(wb, { type: "array", bookType: "xlsx" });
     var writable = await fileHandle.createWritable();
     await writable.write(out);
     await writable.close();
+    if (runtime.scheduleSurfaceRegeneration) {
+      runtime.scheduleSurfaceRegeneration("ifc_work_schedule_task_time");
+    }
   }
 
   function _isoDateOnly(d) {
@@ -1093,16 +1151,20 @@ class GanttScriptAdapter(GanttScriptPort):
     return y + "-" + m + "-" + day + "T00:00:00";
   }
 
-  async function saveTaskDates(task, newStart, newFinish) {
-    if (!task) throw new Error("Nenhuma tarefa selecionada.");
+  // newCompletion is a 0-100 number, or null/undefined to leave completion as it
+  // is (the date-only edit path).
+  async function saveTaskDates(task, newStart, newFinish, newCompletion) {
+    if (!task) throw new Error(t("ganttErrNoTaskSelected"));
     var taskTimeGlobalId = task.rawTime ? runtime.getGlobalId(task.rawTime) : "";
     if (!taskTimeGlobalId) {
-      throw new Error("Esta tarefa não tem um IfcTaskTime vinculado para salvar as datas.");
+      throw new Error(t("ganttErrNoTaskTime"));
     }
     var startIso = _isoDateOnly(newStart);
     var finishIso = _isoDateOnly(newFinish);
+    var completion = (newCompletion === null || newCompletion === undefined)
+      ? null : Math.max(0, Math.min(100, Number(newCompletion)));
 
-    await writeScheduleCellsToWorkbook(taskTimeGlobalId, startIso, finishIso);
+    await writeScheduleCellsToWorkbook(taskTimeGlobalId, startIso, finishIso, completion);
 
     // Keep the in-memory JSON-LD node consistent too (task.rawTime is the
     // very node object living inside runtime.state.graph, not a copy — see
@@ -1110,6 +1172,10 @@ class GanttScriptAdapter(GanttScriptPort):
     // values instead of reverting this edit before the next real refresh.
     task.rawTime[runtime.IBIM_NS + "ScheduleStart"] = [{ "@value": startIso }];
     task.rawTime[runtime.IBIM_NS + "ScheduleFinish"] = [{ "@value": finishIso }];
+    if (completion !== null) {
+      task.rawTime[runtime.IBIM_NS + "Completion"] = [{ "@value": completion }];
+      task.completion = completion;
+    }
     task.scheduleStart = newStart;
     task.scheduleFinish = newFinish;
     var days = runtime.diffDays(newStart, newFinish);
@@ -1120,22 +1186,25 @@ class GanttScriptAdapter(GanttScriptPort):
   runtime.saveTaskDates = saveTaskDates;
 
   // ---------------------------------------------------------------------------
-  // Task rename (the pencil icon next to the modal title, task_table_timeline.js)
-  // — same write path as saveTaskDates above, but against the IfcTask sheet's
-  // own Name column (Name lives on the task itself, not on its IfcTaskTime row).
+  // Task rename / WBS edit (the modal title pencil and the WBS field,
+  // task_table_timeline.js) — same write path as saveTaskDates above, but
+  // against a column on the IfcTask sheet itself (Name and Identification both
+  // live on the task, not on its IfcTaskTime row). columnCandidates is a
+  // priority list of acceptable header names; createIfMissing appends the first
+  // candidate as a new header column when the sheet carries none of them.
   // ---------------------------------------------------------------------------
-  async function writeTaskNameToWorkbook(taskGlobalId, newName) {
+  async function writeTaskCellToWorkbook(taskGlobalId, columnCandidates, value, createIfMissing) {
     var fileHandle = runtime.state.workbookFileHandle;
     var wb = runtime.state.workbookSheetJs;
     if (!fileHandle || !wb) {
-      throw new Error("Nenhuma pasta conectada — conecte o container para salvar.");
+      throw new Error(t("ganttErrNoFolder"));
     }
     if (!window.XLSX || !window.XLSX.utils) {
-      throw new Error("SheetJS indisponível para salvar a planilha.");
+      throw new Error(t("ganttErrSheetJsUnavailable"));
     }
     var XLSX = window.XLSX;
     if (wb.SheetNames.indexOf("IfcTask") === -1) {
-      throw new Error("A aba IfcTask não foi encontrada na planilha conectada.");
+      throw new Error(t("ganttErrSheetMissing", { sheet: "IfcTask" }));
     }
     var ws = wb.Sheets["IfcTask"];
     var range = XLSX.utils.decode_range(ws["!ref"]);
@@ -1148,9 +1217,21 @@ class GanttScriptAdapter(GanttScriptPort):
       if (colName) colByName[colName] = c;
     }
     var gidCol = colByName["GlobalId"];
-    var nameCol = colByName["Name"];
-    if (gidCol === undefined || nameCol === undefined) {
-      throw new Error("A aba IfcTask não tem as colunas GlobalId/Name.");
+    var valueCol;
+    for (var i = 0; i < columnCandidates.length; i++) {
+      if (colByName[columnCandidates[i]] !== undefined) {
+        valueCol = colByName[columnCandidates[i]];
+        break;
+      }
+    }
+    if (valueCol === undefined && createIfMissing) {
+      valueCol = range.e.c + 1;
+      ws[XLSX.utils.encode_cell({ r: headerRow, c: valueCol })] = { t: "s", v: columnCandidates[0] };
+      range.e.c = valueCol;
+      ws["!ref"] = XLSX.utils.encode_range(range);
+    }
+    if (gidCol === undefined || valueCol === undefined) {
+      throw new Error(t("ganttErrColumnsMissing", { sheet: "IfcTask", columns: "GlobalId/" + columnCandidates[0] }));
     }
     var targetRow = -1;
     for (var r = headerRow + 1; r <= range.e.r; r++) {
@@ -1161,22 +1242,25 @@ class GanttScriptAdapter(GanttScriptPort):
       }
     }
     if (targetRow === -1) {
-      throw new Error("Linha da tarefa não encontrada na aba IfcTask (GlobalId " + taskGlobalId + ").");
+      throw new Error(t("ganttErrRowNotFound", { sheet: "IfcTask", globalId: taskGlobalId }));
     }
-    ws[XLSX.utils.encode_cell({ r: targetRow, c: nameCol })] = { t: "s", v: newName };
+    ws[XLSX.utils.encode_cell({ r: targetRow, c: valueCol })] = { t: "s", v: value };
 
     var out = XLSX.write(wb, { type: "array", bookType: "xlsx" });
     var writable = await fileHandle.createWritable();
     await writable.write(out);
     await writable.close();
+    if (runtime.scheduleSurfaceRegeneration) {
+      runtime.scheduleSurfaceRegeneration("ifc_work_schedule_task");
+    }
   }
 
   async function saveTaskName(task, newName) {
-    if (!task) throw new Error("Nenhuma tarefa selecionada.");
+    if (!task) throw new Error(t("ganttErrNoTaskSelected"));
     if (!task.globalId) {
-      throw new Error("Esta tarefa não tem um GlobalId para salvar o nome.");
+      throw new Error(t("ganttErrNoGlobalId"));
     }
-    await writeTaskNameToWorkbook(task.globalId, newName);
+    await writeTaskCellToWorkbook(task.globalId, ["Name"], newName, false);
 
     // Same reasoning as saveTaskDates: task.raw is the live IfcTask node
     // inside runtime.state.graph, so patching it here keeps a later
@@ -1187,6 +1271,95 @@ class GanttScriptAdapter(GanttScriptPort):
     task.name = newName;
   }
   runtime.saveTaskName = saveTaskName;
+
+  async function writeScheduleMetadataToWorkbook(scheduleGlobalId, columnCandidates, value) {
+    var fileHandle = runtime.state.workbookFileHandle;
+    var wb = runtime.state.workbookSheetJs;
+    if (!fileHandle || !wb) throw new Error(t("ganttErrNoFolder"));
+    if (!window.XLSX || !window.XLSX.utils) throw new Error(t("ganttErrSheetJsUnavailable"));
+    var XLSX = window.XLSX;
+    var sheetName = "IfcWorkSchedule";
+    if (wb.SheetNames.indexOf(sheetName) === -1) {
+      throw new Error(t("ganttErrSheetMissing", { sheet: sheetName }));
+    }
+    var ws = wb.Sheets[sheetName];
+    var range = XLSX.utils.decode_range(ws["!ref"]);
+    var headerRow = range.s.r;
+    var columns = {};
+    for (var c = range.s.c; c <= range.e.c; c++) {
+      var headerCell = ws[XLSX.utils.encode_cell({ r: headerRow, c: c })];
+      var header = headerCell && headerCell.v != null ? String(headerCell.v).trim() : "";
+      if (header) columns[header] = c;
+    }
+    var gidColumn = columns.GlobalId;
+    var valueColumn;
+    for (var i = 0; i < columnCandidates.length; i++) {
+      if (columns[columnCandidates[i]] !== undefined) {
+        valueColumn = columns[columnCandidates[i]];
+        break;
+      }
+    }
+    if (valueColumn === undefined) {
+      valueColumn = range.e.c + 1;
+      ws[XLSX.utils.encode_cell({ r: headerRow, c: valueColumn })] = { t: "s", v: columnCandidates[0] };
+      range.e.c = valueColumn;
+      ws["!ref"] = XLSX.utils.encode_range(range);
+    }
+    if (gidColumn === undefined) {
+      throw new Error(t("ganttErrColumnsMissing", { sheet: sheetName, columns: "GlobalId" }));
+    }
+    var targetRow = -1;
+    for (var r = headerRow + 1; r <= range.e.r; r++) {
+      var gidCell = ws[XLSX.utils.encode_cell({ r: r, c: gidColumn })];
+      if (gidCell && String(gidCell.v).trim() === scheduleGlobalId) { targetRow = r; break; }
+    }
+    if (targetRow === -1) {
+      throw new Error(t("ganttErrRowNotFound", { sheet: sheetName, globalId: scheduleGlobalId }));
+    }
+    ws[XLSX.utils.encode_cell({ r: targetRow, c: valueColumn })] = { t: "s", v: value };
+    var output = XLSX.write(wb, { type: "array", bookType: "xlsx" });
+    var writable = await fileHandle.createWritable();
+    await writable.write(output);
+    await writable.close();
+    if (runtime.scheduleSurfaceRegeneration) {
+      runtime.scheduleSurfaceRegeneration("ifc_work_schedule_metadata");
+    }
+  }
+
+  async function saveScheduleField(column, value) {
+    if (column !== "Name" && column !== "Description") {
+      throw new Error("Unsupported IfcWorkSchedule column: " + column);
+    }
+    var schedule = runtime.state.schedule;
+    // The embedded graph node identifies the schedule with dcterms:identifier,
+    // not a GlobalId property (only the connected workbook row carries that),
+    // so fall back to the alias-aware identifier — it is the same compressed
+    // IFC GUID the IfcWorkSchedule sheet keys its GlobalId column on.
+    var globalId = schedule
+      ? (runtime.getGlobalId(schedule)
+        || runtime.aliasAwareLiteral(schedule, "Identification")
+        || runtime.literalValue(schedule, "identifier")
+        || "")
+      : "";
+    if (!schedule || !globalId) throw new Error(t("ganttErrNoScheduleGlobalId"));
+    await writeScheduleMetadataToWorkbook(globalId, [column], value);
+    schedule[runtime.IBIM_NS + column] = [{ "@value": value }];
+  }
+  runtime.saveScheduleField = saveScheduleField;
+
+  async function saveTaskIdentification(task, newIdentification) {
+    if (!task) throw new Error(t("ganttErrNoTaskSelected"));
+    if (!task.globalId) {
+      throw new Error(t("ganttErrNoGlobalId"));
+    }
+    await writeTaskCellToWorkbook(task.globalId, ["Identification", "Identifier"], newIdentification, true);
+
+    if (task.raw) {
+      task.raw[runtime.IBIM_NS + "Identification"] = [{ "@value": newIdentification }];
+    }
+    task.identification = newIdentification;
+  }
+  runtime.saveTaskIdentification = saveTaskIdentification;
 
   // ---------------------------------------------------------------------------
   // Task creation (the "+" button in the Page header, task_table_timeline.js)
@@ -1215,7 +1388,7 @@ class GanttScriptAdapter(GanttScriptPort):
   function _appendRowToSheet(wb, sheetName, valuesByColumn) {
     var XLSX = window.XLSX;
     if (wb.SheetNames.indexOf(sheetName) === -1) {
-      throw new Error("A aba " + sheetName + " não foi encontrada na planilha conectada.");
+      throw new Error(t("ganttErrSheetMissing", { sheet: sheetName }));
     }
     var ws = wb.Sheets[sheetName];
     var range = XLSX.utils.decode_range(ws["!ref"]);
@@ -1235,7 +1408,15 @@ class GanttScriptAdapter(GanttScriptPort):
       var value = valuesByColumn[colName2];
       if (value === undefined || value === null || value === "") continue;
       var colIdx = colByName[colName2];
-      if (colIdx === undefined) continue; // sheet doesn't declare this column -- skip it
+      if (colIdx === undefined) {
+        // Sheet has no such column yet -- append it to the header row so the
+        // value is not silently dropped (e.g. Identification / WBS on a
+        // workbook whose IfcTask sheet never carried that column).
+        colIdx = maxCol + 1;
+        colByName[colName2] = colIdx;
+        ws[XLSX.utils.encode_cell({ r: headerRow, c: colIdx })] = { t: "s", v: colName2 };
+        maxCol = colIdx;
+      }
       var cellType = typeof value === "boolean" ? "b" : (typeof value === "number" ? "n" : "s");
       ws[XLSX.utils.encode_cell({ r: newRow, c: colIdx })] = { t: cellType, v: value };
       if (colIdx > maxCol) maxCol = colIdx;
@@ -1249,20 +1430,21 @@ class GanttScriptAdapter(GanttScriptPort):
     var fileHandle = runtime.state.workbookFileHandle;
     var wb = runtime.state.workbookSheetJs;
     if (!fileHandle || !wb) {
-      throw new Error("Nenhuma pasta conectada — conecte o container para salvar.");
+      throw new Error(t("ganttErrNoFolder"));
     }
     if (!window.XLSX || !window.XLSX.utils) {
-      throw new Error("SheetJS indisponível para salvar a planilha.");
+      throw new Error(t("ganttErrSheetJsUnavailable"));
     }
     var name = String((fields && fields.name) || "").trim();
     if (!name) {
-      throw new Error("Informe o nome da tarefa.");
+      throw new Error(t("ganttErrNameRequired"));
     }
     var taskGlobalId = _randomGlobalId();
     var taskTimeGlobalId = _randomGlobalId();
 
     _appendRowToSheet(wb, "IfcTask", {
       GlobalId: taskGlobalId,
+      Identification: (fields && fields.identification) || undefined,
       Name: name,
       IsMilestone: false,
       TaskTimeGlobalId: taskTimeGlobalId,
@@ -1278,8 +1460,87 @@ class GanttScriptAdapter(GanttScriptPort):
     var writable = await fileHandle.createWritable();
     await writable.write(out);
     await writable.close();
+    if (runtime.scheduleSurfaceRegeneration) {
+      runtime.scheduleSurfaceRegeneration("ifc_work_schedule_task_created");
+    }
   }
   runtime.createTask = createTask;
+
+  // ---------------------------------------------------------------------------
+  // Task deletion (the trash icon at the bottom of the edit modal,
+  // task_table_timeline.js) — drops the task's IfcTask row, its linked
+  // IfcTaskTime row and any IfcRelSequence row that still points at it, then
+  // (like createTask) leaves the caller to refreshFromWorkbook() so the screen
+  // re-renders from the rewritten file.
+  // ---------------------------------------------------------------------------
+  function _deleteRowsFromSheet(wb, sheetName, shouldDeleteRow) {
+    var XLSX = window.XLSX;
+    if (wb.SheetNames.indexOf(sheetName) === -1) return 0;
+    var ws = wb.Sheets[sheetName];
+    var aoa = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: null });
+    if (!aoa.length) return 0;
+    var header = aoa[0] || [];
+    var kept = [header];
+    var removed = 0;
+    for (var r = 1; r < aoa.length; r++) {
+      var cells = aoa[r] || [];
+      var rowObj = {};
+      for (var c = 0; c < header.length; c++) {
+        var key = (header[c] === undefined || header[c] === null) ? "" : String(header[c]).trim();
+        if (key) rowObj[key] = cells[c];
+      }
+      if (shouldDeleteRow(rowObj)) { removed++; continue; }
+      kept.push(cells);
+    }
+    if (removed > 0) wb.Sheets[sheetName] = XLSX.utils.aoa_to_sheet(kept);
+    return removed;
+  }
+
+  async function deleteTask(task) {
+    var fileHandle = runtime.state.workbookFileHandle;
+    var wb = runtime.state.workbookSheetJs;
+    if (!fileHandle || !wb) {
+      throw new Error(t("ganttErrNoFolder"));
+    }
+    if (!window.XLSX || !window.XLSX.utils) {
+      throw new Error(t("ganttErrSheetJsUnavailable"));
+    }
+    if (!task) throw new Error(t("ganttErrNoTaskSelected"));
+    var taskGlobalId = task.globalId || "";
+    if (!taskGlobalId) throw new Error(t("ganttErrNoGlobalId"));
+    var taskTimeGlobalId = task.rawTime ? runtime.getGlobalId(task.rawTime) : "";
+
+    _deleteRowsFromSheet(wb, "IfcTask", function (row) {
+      return String(row.GlobalId || "").trim() === taskGlobalId;
+    });
+    if (taskTimeGlobalId) {
+      _deleteRowsFromSheet(wb, "IfcTaskTime", function (row) {
+        return String(row.GlobalId || "").trim() === taskTimeGlobalId;
+      });
+    }
+    _deleteRowsFromSheet(wb, "IfcRelSequence", function (row) {
+      var refs = [
+        row.RelatingProcess, row.RelatingProcessGlobalId, row.Predecessor,
+        row.RelatedProcess, row.RelatedProcessGlobalId, row.Successor
+      ];
+      for (var i = 0; i < refs.length; i++) {
+        if (refs[i] !== undefined && refs[i] !== null
+          && String(refs[i]).indexOf(taskGlobalId) !== -1) {
+          return true;
+        }
+      }
+      return false;
+    });
+
+    var out = window.XLSX.write(wb, { type: "array", bookType: "xlsx" });
+    var writable = await fileHandle.createWritable();
+    await writable.write(out);
+    await writable.close();
+    if (runtime.scheduleSurfaceRegeneration) {
+      runtime.scheduleSurfaceRegeneration("ifc_work_schedule_task_deleted");
+    }
+  }
+  runtime.deleteTask = deleteTask;
 
   // Reads the connected container's own workbook and returns the schedule,
   // its tasks, their task times and their sequence relations as JSON-LD
@@ -1521,6 +1782,15 @@ json.dumps({
   var rt = window.OntoBDCGanttViewRuntime = window.OntoBDCGanttViewRuntime || { state: {} };
   console.log("[gantt-view] state start: task_table_timeline_script_generated");
 
+  // i18n_apply.js runs before this script and attaches the shared translator as
+  // rt.t; fall back to the key itself if it somehow is not there yet.
+  function t(key, vars) {
+    if (typeof rt.t === "function") return rt.t(key, vars);
+    var text = String(key);
+    if (vars) { for (var k in vars) { text = text.split("{" + k + "}").join(String(vars[k])); } }
+    return text;
+  }
+
   function numOr(v, fallback) {
     var n = Number(v);
     if (isFinite(n) && !isNaN(n)) return n;
@@ -1568,13 +1838,17 @@ json.dumps({
   // since the tbody/svg elements it hangs its listeners off of are
   // recreated on every pass but the dialog itself only needs to exist once.
   var editDialogEl = null;
+  var editDialogWbsInput = null;
   var editDialogStartInput = null;
   var editDialogFinishInput = null;
+  var editDialogCompletionInput = null;
+  var editDialogCompletionField = null;
   var editDialogTitleTextEl = null;
   var editDialogRenameBtn = null;
   var editDialogTitleInput = null;
   var editDialogErrorEl = null;
   var editDialogSaveBtn = null;
+  var editDialogDeleteBtn = null;
   var editDialogCurrentTask = null;
   var editDialogRenameSaving = false;
 
@@ -1594,7 +1868,7 @@ json.dumps({
     var renameBtn = document.createElement("button");
     renameBtn.type = "button";
     renameBtn.className = "onto-gantt-edit-rename-btn";
-    renameBtn.setAttribute("aria-label", "Renomear");
+    renameBtn.setAttribute("aria-label", t("ganttActionRename"));
     renameBtn.textContent = "✎";
     var titleInput = document.createElement("input");
     titleInput.type = "text";
@@ -1606,7 +1880,7 @@ json.dumps({
 
     var closeBtn = document.createElement("button");
     closeBtn.type = "button";
-    closeBtn.setAttribute("aria-label", "Fechar");
+    closeBtn.setAttribute("aria-label", t("ganttActionClose"));
     closeBtn.textContent = "×";
     header.appendChild(titleWrap);
     header.appendChild(closeBtn);
@@ -1649,7 +1923,7 @@ json.dumps({
       if (!task) return;
       var newName = titleInput.value.trim();
       if (!newName) {
-        showEditDialogError("O nome da tarefa não pode ficar vazio.");
+        showEditDialogError(t("ganttErrNameEmpty"));
         return;
       }
       if (newName === task.name) {
@@ -1657,7 +1931,7 @@ json.dumps({
         return;
       }
       if (typeof rt.saveTaskName !== "function") {
-        showEditDialogError("Salvamento indisponível nesta página.");
+        showEditDialogError(t("ganttErrSaveUnavailable"));
         return;
       }
       editDialogErrorEl.style.display = "none";
@@ -1681,16 +1955,23 @@ json.dumps({
     var body = document.createElement("div");
     body.className = "onto-gantt-edit-dialog-body";
 
+    var wbsLabel = document.createElement("label");
+    wbsLabel.className = "onto-gantt-edit-field";
+    wbsLabel.textContent = t("ganttColumnWbs");
+    var wbsInput = document.createElement("input");
+    wbsInput.type = "text";
+    wbsLabel.appendChild(wbsInput);
+
     var startLabel = document.createElement("label");
     startLabel.className = "onto-gantt-edit-field";
-    startLabel.textContent = "Início";
+    startLabel.textContent = t("ganttFieldStart");
     var startInput = document.createElement("input");
     startInput.type = "date";
     startLabel.appendChild(startInput);
 
     var finishLabel = document.createElement("label");
     finishLabel.className = "onto-gantt-edit-field";
-    finishLabel.textContent = "Fim";
+    finishLabel.textContent = t("ganttFieldFinish");
     var finishInput = document.createElement("input");
     finishInput.type = "date";
     finishLabel.appendChild(finishInput);
@@ -1703,18 +1984,47 @@ json.dumps({
     var cancelBtn = document.createElement("button");
     cancelBtn.type = "button";
     cancelBtn.className = "onto-gantt-edit-btn onto-gantt-edit-btn-secondary";
-    cancelBtn.textContent = "Cancelar";
+    cancelBtn.textContent = t("ganttActionCancel");
     var saveBtn = document.createElement("button");
     saveBtn.type = "button";
     saveBtn.className = "onto-gantt-edit-btn onto-gantt-edit-btn-primary";
-    saveBtn.textContent = "Salvar";
+    saveBtn.textContent = t("ganttActionSave");
     footer.appendChild(cancelBtn);
     footer.appendChild(saveBtn);
 
+    var completionLabel = document.createElement("label");
+    completionLabel.className = "onto-gantt-edit-field";
+    completionLabel.textContent = t("ganttFieldCompletion");
+    var completionInput = document.createElement("input");
+    completionInput.type = "number";
+    completionInput.min = "0";
+    completionInput.max = "100";
+    completionInput.step = "1";
+    completionInput.inputMode = "numeric";
+    completionLabel.appendChild(completionInput);
+
+    // Destructive action, kept apart from the Cancel/Save row: a divider, then
+    // an icon-only, right-aligned delete button below it.
+    var divider = document.createElement("hr");
+    divider.className = "onto-gantt-edit-divider";
+    var dangerRow = document.createElement("div");
+    dangerRow.className = "onto-gantt-edit-danger-row";
+    var deleteBtn = document.createElement("button");
+    deleteBtn.type = "button";
+    deleteBtn.className = "onto-gantt-edit-delete-btn";
+    deleteBtn.setAttribute("aria-label", t("ganttActionDelete"));
+    deleteBtn.setAttribute("title", t("ganttActionDelete"));
+    deleteBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>';
+    dangerRow.appendChild(deleteBtn);
+
+    body.appendChild(wbsLabel);
     body.appendChild(startLabel);
     body.appendChild(finishLabel);
+    body.appendChild(completionLabel);
     body.appendChild(errorEl);
     body.appendChild(footer);
+    body.appendChild(divider);
+    body.appendChild(dangerRow);
 
     dialog.appendChild(header);
     dialog.appendChild(body);
@@ -1728,10 +2038,15 @@ json.dumps({
     cancelBtn.addEventListener("click", closeDialog);
     dialog.addEventListener("cancel", function () { editDialogCurrentTask = null; });
     saveBtn.addEventListener("click", function () { handleSaveEdit(); });
+    deleteBtn.addEventListener("click", function () { handleDeleteTask(); });
 
     editDialogEl = dialog;
+    editDialogWbsInput = wbsInput;
+    editDialogDeleteBtn = deleteBtn;
     editDialogStartInput = startInput;
     editDialogFinishInput = finishInput;
+    editDialogCompletionInput = completionInput;
+    editDialogCompletionField = completionLabel;
     editDialogTitleTextEl = titleText;
     editDialogRenameBtn = renameBtn;
     editDialogTitleInput = titleInput;
@@ -1754,13 +2069,20 @@ json.dumps({
     editDialogTitleInput.style.display = "none";
     editDialogTitleTextEl.style.display = "";
     editDialogRenameBtn.style.display = "";
-    editDialogTitleTextEl.textContent = task.name || task.identification || "Tarefa";
+    editDialogTitleTextEl.textContent = task.name || task.identification || t("ganttTaskFallbackName");
+    editDialogWbsInput.value = task.identification || "";
     editDialogStartInput.value = rt.formatDate(task.scheduleStart) || "";
     editDialogFinishInput.value = rt.formatDate(task.scheduleFinish) || "";
+    // A milestone is a point in time, so a completion percentage is meaningless
+    // for it — hide the field rather than offer an edit that has no effect.
+    editDialogCompletionField.style.display = task.isMilestone ? "none" : "";
+    editDialogCompletionInput.value = (task.completion === null || task.completion === undefined)
+      ? "" : String(Math.round(task.completion));
     editDialogErrorEl.textContent = "";
     editDialogErrorEl.style.display = "none";
     editDialogSaveBtn.disabled = false;
-    editDialogSaveBtn.textContent = "Salvar";
+    editDialogSaveBtn.textContent = t("ganttActionSave");
+    editDialogDeleteBtn.disabled = false;
     if (typeof dialog.showModal === "function") {
       dialog.showModal();
     } else {
@@ -1776,36 +2098,85 @@ json.dumps({
     var startVal = editDialogStartInput.value;
     var finishVal = editDialogFinishInput.value;
     if (!startVal || !finishVal) {
-      showEditDialogError("Informe as duas datas.");
+      showEditDialogError(t("ganttErrBothDates"));
       return;
     }
     var newStart = rt.parseDate(startVal);
     var newFinish = rt.parseDate(finishVal);
     if (!newStart || !newFinish) {
-      showEditDialogError("Data inválida.");
+      showEditDialogError(t("ganttErrInvalidDate"));
       return;
     }
     if (newFinish.getTime() < newStart.getTime()) {
-      showEditDialogError("A data de fim não pode ser anterior à data de início.");
+      showEditDialogError(t("ganttErrFinishBeforeStart"));
       return;
     }
+    var newCompletion = null;
+    if (!task.isMilestone) {
+      var completionVal = editDialogCompletionInput.value;
+      if (completionVal !== "" && completionVal !== null && completionVal !== undefined) {
+        var pct = parseFloat(String(completionVal).replace("%", "").replace(",", "."));
+        if (isNaN(pct) || pct < 0 || pct > 100) {
+          showEditDialogError(t("ganttErrCompletionRange"));
+          return;
+        }
+        newCompletion = Math.max(0, Math.min(100, pct));
+      }
+    }
     if (typeof rt.saveTaskDates !== "function") {
-      showEditDialogError("Salvamento indisponível nesta página.");
+      showEditDialogError(t("ganttErrSaveUnavailable"));
       return;
     }
     editDialogErrorEl.style.display = "none";
     editDialogSaveBtn.disabled = true;
-    editDialogSaveBtn.textContent = "Salvando…";
-    Promise.resolve(rt.saveTaskDates(task, newStart, newFinish)).then(function () {
+    editDialogSaveBtn.textContent = t("ganttActionSaving");
+    // WBS lives on the IfcTask sheet, dates/completion on IfcTaskTime — two
+    // separate workbook writes, so only touch the WBS one when it actually
+    // changed.
+    var newWbs = editDialogWbsInput.value.trim();
+    var pipeline = Promise.resolve();
+    if (newWbs !== (task.identification || "") && typeof rt.saveTaskIdentification === "function") {
+      pipeline = pipeline.then(function () { return rt.saveTaskIdentification(task, newWbs); });
+    }
+    pipeline.then(function () {
+      return rt.saveTaskDates(task, newStart, newFinish, newCompletion);
+    }).then(function () {
       editDialogSaveBtn.disabled = false;
-      editDialogSaveBtn.textContent = "Salvar";
+      editDialogSaveBtn.textContent = t("ganttActionSave");
       if (editDialogEl && typeof editDialogEl.close === "function") editDialogEl.close();
       editDialogCurrentTask = null;
       runRender();
       if (typeof rt.runArrows === "function") rt.runArrows();
     }).catch(function (err) {
       editDialogSaveBtn.disabled = false;
-      editDialogSaveBtn.textContent = "Salvar";
+      editDialogSaveBtn.textContent = t("ganttActionSave");
+      showEditDialogError((err && err.message) ? err.message : String(err));
+    });
+  }
+
+  function handleDeleteTask() {
+    var task = editDialogCurrentTask;
+    if (!task) return;
+    if (typeof rt.deleteTask !== "function" || typeof rt.refreshFromWorkbook !== "function") {
+      showEditDialogError(t("ganttErrDeleteUnavailable"));
+      return;
+    }
+    if (typeof window.confirm === "function" && !window.confirm(t("ganttDeleteConfirm"))) {
+      return;
+    }
+    editDialogErrorEl.style.display = "none";
+    editDialogDeleteBtn.disabled = true;
+    editDialogSaveBtn.disabled = true;
+    Promise.resolve(rt.deleteTask(task)).then(function () {
+      return rt.refreshFromWorkbook();
+    }).then(function () {
+      editDialogDeleteBtn.disabled = false;
+      editDialogSaveBtn.disabled = false;
+      if (editDialogEl && typeof editDialogEl.close === "function") editDialogEl.close();
+      editDialogCurrentTask = null;
+    }).catch(function (err) {
+      editDialogDeleteBtn.disabled = false;
+      editDialogSaveBtn.disabled = false;
       showEditDialogError((err && err.message) ? err.message : String(err));
     });
   }
@@ -1818,6 +2189,7 @@ json.dumps({
   // so the new row reaches the screen through the exact same parse/render
   // path every other task already went through.
   var addTaskDialogEl = null;
+  var addTaskWbsInput = null;
   var addTaskNameInput = null;
   var addTaskStartInput = null;
   var addTaskFinishInput = null;
@@ -1836,11 +2208,11 @@ json.dumps({
     title.className = "onto-gantt-edit-dialog-title";
     var titleText = document.createElement("span");
     titleText.className = "onto-gantt-edit-title-text";
-    titleText.textContent = "Nova tarefa";
+    titleText.textContent = t("ganttNewTaskTitle");
     title.appendChild(titleText);
     var closeBtn = document.createElement("button");
     closeBtn.type = "button";
-    closeBtn.setAttribute("aria-label", "Fechar");
+    closeBtn.setAttribute("aria-label", t("ganttActionClose"));
     closeBtn.textContent = "×";
     header.appendChild(title);
     header.appendChild(closeBtn);
@@ -1848,24 +2220,31 @@ json.dumps({
     var body = document.createElement("div");
     body.className = "onto-gantt-edit-dialog-body";
 
+    var wbsLabel = document.createElement("label");
+    wbsLabel.className = "onto-gantt-edit-field";
+    wbsLabel.textContent = t("ganttColumnWbs");
+    var wbsInput = document.createElement("input");
+    wbsInput.type = "text";
+    wbsLabel.appendChild(wbsInput);
+
     var nameLabel = document.createElement("label");
     nameLabel.className = "onto-gantt-edit-field";
-    nameLabel.textContent = "Nome";
+    nameLabel.textContent = t("ganttFieldName");
     var nameInput = document.createElement("input");
     nameInput.type = "text";
-    nameInput.placeholder = "Nome da tarefa";
+    nameInput.placeholder = t("ganttColumnTaskName");
     nameLabel.appendChild(nameInput);
 
     var startLabel = document.createElement("label");
     startLabel.className = "onto-gantt-edit-field";
-    startLabel.textContent = "Início";
+    startLabel.textContent = t("ganttFieldStart");
     var startInput = document.createElement("input");
     startInput.type = "date";
     startLabel.appendChild(startInput);
 
     var finishLabel = document.createElement("label");
     finishLabel.className = "onto-gantt-edit-field";
-    finishLabel.textContent = "Fim";
+    finishLabel.textContent = t("ganttFieldFinish");
     var finishInput = document.createElement("input");
     finishInput.type = "date";
     finishLabel.appendChild(finishInput);
@@ -1878,14 +2257,15 @@ json.dumps({
     var cancelBtn = document.createElement("button");
     cancelBtn.type = "button";
     cancelBtn.className = "onto-gantt-edit-btn onto-gantt-edit-btn-secondary";
-    cancelBtn.textContent = "Cancelar";
+    cancelBtn.textContent = t("ganttActionCancel");
     var submitBtn = document.createElement("button");
     submitBtn.type = "button";
     submitBtn.className = "onto-gantt-edit-btn onto-gantt-edit-btn-primary";
-    submitBtn.textContent = "Adicionar";
+    submitBtn.textContent = t("ganttActionAdd");
     footer.appendChild(cancelBtn);
     footer.appendChild(submitBtn);
 
+    body.appendChild(wbsLabel);
     body.appendChild(nameLabel);
     body.appendChild(startLabel);
     body.appendChild(finishLabel);
@@ -1910,6 +2290,7 @@ json.dumps({
     submitBtn.addEventListener("click", function () { handleCreateTask(); });
 
     addTaskDialogEl = dialog;
+    addTaskWbsInput = wbsInput;
     addTaskNameInput = nameInput;
     addTaskStartInput = startInput;
     addTaskFinishInput = finishInput;
@@ -1925,13 +2306,14 @@ json.dumps({
 
   function openAddTaskDialog() {
     var dialog = ensureAddTaskDialog();
+    addTaskWbsInput.value = "";
     addTaskNameInput.value = "";
     addTaskStartInput.value = "";
     addTaskFinishInput.value = "";
     addTaskErrorEl.textContent = "";
     addTaskErrorEl.style.display = "none";
     addTaskSubmitBtn.disabled = false;
-    addTaskSubmitBtn.textContent = "Adicionar";
+    addTaskSubmitBtn.textContent = t("ganttActionAdd");
     if (typeof dialog.showModal === "function") {
       dialog.showModal();
     } else {
@@ -1945,7 +2327,7 @@ json.dumps({
   function handleCreateTask() {
     var name = addTaskNameInput.value.trim();
     if (!name) {
-      showAddTaskError("Informe o nome da tarefa.");
+      showAddTaskError(t("ganttErrNameRequired"));
       return;
     }
     var startVal = addTaskStartInput.value;
@@ -1954,30 +2336,31 @@ json.dumps({
       var start = rt.parseDate(startVal);
       var finish = rt.parseDate(finishVal);
       if (start && finish && finish.getTime() < start.getTime()) {
-        showAddTaskError("A data de fim não pode ser anterior à data de início.");
+        showAddTaskError(t("ganttErrFinishBeforeStart"));
         return;
       }
     }
     if (typeof rt.createTask !== "function" || typeof rt.refreshFromWorkbook !== "function") {
-      showAddTaskError("Cadastro indisponível nesta página.");
+      showAddTaskError(t("ganttErrCreateUnavailable"));
       return;
     }
     addTaskErrorEl.style.display = "none";
     addTaskSubmitBtn.disabled = true;
-    addTaskSubmitBtn.textContent = "Adicionando…";
+    addTaskSubmitBtn.textContent = t("ganttActionAdding");
     Promise.resolve(rt.createTask({
       name: name,
+      identification: addTaskWbsInput.value.trim() || undefined,
       scheduleStart: startVal ? startVal + "T00:00:00" : undefined,
       scheduleFinish: finishVal ? finishVal + "T00:00:00" : undefined,
     })).then(function () {
       return rt.refreshFromWorkbook();
     }).then(function () {
       addTaskSubmitBtn.disabled = false;
-      addTaskSubmitBtn.textContent = "Adicionar";
+      addTaskSubmitBtn.textContent = t("ganttActionAdd");
       if (addTaskDialogEl && typeof addTaskDialogEl.close === "function") addTaskDialogEl.close();
     }).catch(function (err) {
       addTaskSubmitBtn.disabled = false;
-      addTaskSubmitBtn.textContent = "Adicionar";
+      addTaskSubmitBtn.textContent = t("ganttActionAdd");
       showAddTaskError((err && err.message) ? err.message : String(err));
     });
   }
@@ -1992,6 +2375,56 @@ json.dumps({
     document.addEventListener("DOMContentLoaded", wireAddTaskButton);
   } else {
     wireAddTaskButton();
+  }
+
+  function renderScheduleHeader(schedule) {
+    if (!schedule) return;
+    var identifier = rt.aliasAwareLiteral(schedule, "Identification")
+      || rt.aliasAwareLiteral(schedule, "Identifier")
+      || rt.getGlobalId(schedule);
+    var name = rt.aliasAwareLiteral(schedule, "Name")
+      || rt.aliasAwareLiteral(schedule, "Title")
+      || identifier
+      || t("breadcrumbSchedule");
+    var description = rt.aliasAwareLiteral(schedule, "Description");
+    document.title = name || document.title;
+
+    var nameHost = document.querySelector(".name");
+    rt.mountInlineEditor(nameHost, {
+      value: name,
+      required: true,
+      editLabel: t("editField", { field: t("ganttFieldName") }),
+      saveLabel: t("saveField", { field: t("ganttFieldName") }),
+      cancelLabel: t("cancelEdit"),
+      requiredMessage: t("fieldRequired", { field: t("ganttFieldName") }),
+      emptyLabel: t("emptyValue"),
+      onSave: function (value) { return rt.saveScheduleField("Name", value); },
+    });
+    var identifierHost = document.querySelector(".identifier");
+    if (identifierHost) identifierHost.textContent = identifier;
+
+    var fields = document.querySelector(".fields");
+    if (!fields) return;
+    fields.innerHTML = "";
+    var row = document.createElement("div");
+    row.className = "field";
+    var label = document.createElement("div");
+    label.className = "field-label";
+    label.textContent = t("description");
+    var valueHost = document.createElement("div");
+    valueHost.className = "field-value";
+    rt.mountInlineEditor(valueHost, {
+      value: description,
+      multiline: true,
+      rows: 3,
+      editLabel: t("editField", { field: t("description") }),
+      saveLabel: t("saveField", { field: t("description") }),
+      cancelLabel: t("cancelEdit"),
+      emptyLabel: t("emptyValue"),
+      onSave: function (value) { return rt.saveScheduleField("Description", value); },
+    });
+    row.append(label, valueHost);
+    fields.appendChild(row);
   }
 
   function runRender() {
@@ -2020,6 +2453,7 @@ json.dumps({
 
     var enrichedTasks = rt.state.enrichedTasks || [];
     var schedule = rt.state.schedule || null;
+    renderScheduleHeader(schedule);
 
     var allDates = [];
     for (var i = 0; i < enrichedTasks.length; i++) {

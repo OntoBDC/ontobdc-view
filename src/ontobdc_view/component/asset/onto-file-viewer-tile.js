@@ -50,6 +50,7 @@ const NATIVE_RENDERABLE_EXTENSIONS = Object.freeze(
     "png", "jpg", "jpeg", "gif", "webp", "bmp", "svg", "tif", "tiff",
     "pdf",
     "csv",
+    "eml",
   ]),
 );
 const FILE_VIEWER_DEFAULTS = Object.freeze({

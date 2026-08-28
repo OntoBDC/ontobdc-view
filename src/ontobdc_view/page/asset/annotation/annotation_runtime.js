@@ -20,7 +20,7 @@
   // keep in sync by hand; there is no browser-side YAML fetch/build step
   // in this package, so the YAML files are the canonical authored source
   // and this table is their compiled runtime copy.
-  const LABELS_BY_LOCALE = {"en":{"annotation":"Annotation","emptyAnnotation":"Annotation without text.","showAnnotation":"Show annotation: ","closeAnnotation":"Close annotation","previewUnavailable":"The preview area is not available.","openCancelled":"Opening the annotation was cancelled.","application":"OntoBDC Annotation","resource":"Resource","dialog":"Annotate representation","close":"Close","category":"Category","newAnnotation":"New annotation","delete":"Delete","save":"Save","saved":"Saved","invalidGeometry":"The selected geometry is not valid for this annotation category.","saveError":"The annotation could not be saved.","field":"Field","legend":"Legend","total":"Total","openIssues":"Open issues","inProgressIssues":"In progress","resolvedIssues":"Resolved","withoutGeometry":"Without geometry","withoutThread":"Without Thread","open":"Open","unassigned":"Unassigned subjects","unlabeled":"Unlabeled subject","subjects":"Subjects","subject":"Subject","annotationsStat":"Annotations","categoriesStat":"Categories","peopleStat":"People","resourcesStat":"Resources","rangeStat":"Range","views":"Subject views","space":"Space","timeline":"Timeline","people":"People","withoutPosition":"Without spatial position","spatialGroup":"Spatial group","empty":"No annotations.","author":"Author","modifier":"Modifier","resolver":"Resolver","recorder":"Recorder","assignee":"Assignee","categoryLabels":{"NoteAnnotation":"Note","IssueAnnotation":"Issue","ClassificationAnnotation":"Classification","LocationAnnotation":"Location","RecordAnnotation":"Record"},"toolLabels":{"select":"Select","point":"Point","multiple-points":"Multiple points","bounding-box":"Bounding box","clear":"Clear geometry"}},"pt-BR":{"annotation":"Anotação","emptyAnnotation":"Anotação sem texto.","showAnnotation":"Mostrar anotação: ","closeAnnotation":"Fechar anotação","previewUnavailable":"A área de pré-visualização não está disponível.","openCancelled":"A abertura da anotação foi cancelada.","application":"Anotação OntoBDC","resource":"Recurso","dialog":"Anotar representação","close":"Fechar","category":"Categoria","newAnnotation":"Nova anotação","delete":"Excluir","save":"Salvar","saved":"Salvo","invalidGeometry":"A geometria selecionada não é válida para esta categoria de anotação.","saveError":"Não foi possível salvar a anotação.","field":"Campo","legend":"Legenda","total":"Total","openIssues":"Problemas abertos","inProgressIssues":"Em andamento","resolvedIssues":"Resolvidos","withoutGeometry":"Sem geometria","withoutThread":"Sem tópico","open":"Abrir","unassigned":"Assuntos não atribuídos","unlabeled":"Assunto sem rótulo","subjects":"Assuntos","subject":"Assunto","annotationsStat":"Anotações","categoriesStat":"Categorias","peopleStat":"Pessoas","resourcesStat":"Recursos","rangeStat":"Período","views":"Visões do assunto","space":"Espaço","timeline":"Linha do tempo","people":"Pessoas","withoutPosition":"Sem posição espacial","spatialGroup":"Grupo espacial","empty":"Nenhuma anotação.","author":"Autor","modifier":"Modificador","resolver":"Resolvedor","recorder":"Registrador","assignee":"Responsável","categoryLabels":{"NoteAnnotation":"Nota","IssueAnnotation":"Problema","ClassificationAnnotation":"Classificação","LocationAnnotation":"Localização","RecordAnnotation":"Registro"},"toolLabels":{"select":"Selecionar","point":"Ponto","multiple-points":"Múltiplos pontos","bounding-box":"Caixa delimitadora","clear":"Limpar geometria"}},"pt-PT":{"annotation":"Anotação","emptyAnnotation":"Anotação sem texto.","showAnnotation":"Mostrar anotação: ","closeAnnotation":"Fechar anotação","previewUnavailable":"A área de pré-visualização não está disponível.","openCancelled":"A abertura da anotação foi cancelada.","application":"Anotação OntoBDC","resource":"Recurso","dialog":"Anotar representação","close":"Fechar","category":"Categoria","newAnnotation":"Nova anotação","delete":"Eliminar","save":"Guardar","saved":"Guardado","invalidGeometry":"A geometria selecionada não é válida para esta categoria de anotação.","saveError":"Não foi possível guardar a anotação.","field":"Campo","legend":"Legenda","total":"Total","openIssues":"Problemas em aberto","inProgressIssues":"Em curso","resolvedIssues":"Resolvidos","withoutGeometry":"Sem geometria","withoutThread":"Sem tópico","open":"Abrir","unassigned":"Assuntos não atribuídos","unlabeled":"Assunto sem etiqueta","subjects":"Assuntos","subject":"Assunto","annotationsStat":"Anotações","categoriesStat":"Categorias","peopleStat":"Pessoas","resourcesStat":"Recursos","rangeStat":"Período","views":"Vistas do assunto","space":"Espaço","timeline":"Linha temporal","people":"Pessoas","withoutPosition":"Sem posição espacial","spatialGroup":"Grupo espacial","empty":"Sem anotações.","author":"Autor","modifier":"Modificador","resolver":"Resolvedor","recorder":"Registador","assignee":"Responsável","categoryLabels":{"NoteAnnotation":"Nota","IssueAnnotation":"Problema","ClassificationAnnotation":"Classificação","LocationAnnotation":"Localização","RecordAnnotation":"Registo"},"toolLabels":{"select":"Selecionar","point":"Ponto","multiple-points":"Múltiplos pontos","bounding-box":"Caixa delimitadora","clear":"Limpar geometria"}},"es":{"annotation":"Anotación","emptyAnnotation":"Anotación sin texto.","showAnnotation":"Mostrar anotación: ","closeAnnotation":"Cerrar anotación","previewUnavailable":"El área de vista previa no está disponible.","openCancelled":"Se canceló la apertura de la anotación.","application":"Anotación OntoBDC","resource":"Recurso","dialog":"Anotar representación","close":"Cerrar","category":"Categoría","newAnnotation":"Nueva anotación","delete":"Eliminar","save":"Guardar","saved":"Guardado","invalidGeometry":"La geometría seleccionada no es válida para esta categoría de anotación.","saveError":"No se pudo guardar la anotación.","field":"Campo","legend":"Leyenda","total":"Total","openIssues":"Problemas abiertos","inProgressIssues":"En progreso","resolvedIssues":"Resueltos","withoutGeometry":"Sin geometría","withoutThread":"Sin hilo","open":"Abrir","unassigned":"Asuntos no asignados","unlabeled":"Asunto sin etiqueta","subjects":"Asuntos","subject":"Asunto","annotationsStat":"Anotaciones","categoriesStat":"Categorías","peopleStat":"Personas","resourcesStat":"Recursos","rangeStat":"Rango","views":"Vistas del asunto","space":"Espacio","timeline":"Línea de tiempo","people":"Personas","withoutPosition":"Sin posición espacial","spatialGroup":"Grupo espacial","empty":"Sin anotaciones.","author":"Autor","modifier":"Modificador","resolver":"Resolutor","recorder":"Registrador","assignee":"Responsable","categoryLabels":{"NoteAnnotation":"Nota","IssueAnnotation":"Problema","ClassificationAnnotation":"Clasificación","LocationAnnotation":"Ubicación","RecordAnnotation":"Registro"},"toolLabels":{"select":"Seleccionar","point":"Punto","multiple-points":"Múltiples puntos","bounding-box":"Cuadro delimitador","clear":"Limpiar geometría"}}};
+  const LABELS_BY_LOCALE = {"en":{"annotation":"Annotation","emptyAnnotation":"Annotation without text.","showAnnotation":"Show annotation: ","closeAnnotation":"Close annotation","previewUnavailable":"The preview area is not available.","openCancelled":"Opening the annotation was cancelled.","application":"OntoBDC Annotation","resource":"Resource","dialog":"Annotate representation","close":"Close","category":"Category","newAnnotation":"New annotation","delete":"Delete","save":"Save","saved":"Saved","invalidGeometry":"The selected geometry is not valid for this annotation category.","saveError":"The annotation could not be saved.","field":"Field","legend":"Legend","total":"Total","openIssues":"Open issues","inProgressIssues":"In progress","resolvedIssues":"Resolved","withoutGeometry":"Without geometry","withoutThread":"Without Thread","open":"Open","unassigned":"Unassigned threads","unlabeled":"Unlabeled thread","subjects":"Threads","subject":"Thread","threads":"Threads","thread":"Thread","newThread":"New thread","threadName":"Name","threadDescription":"Description","createThread":"Create","annotationsStat":"Annotations","categoriesStat":"Categories","peopleStat":"People","resourcesStat":"Resources","rangeStat":"Range","views":"Thread views","space":"Space","timeline":"Timeline","people":"People","withoutPosition":"Without spatial position","spatialGroup":"Spatial group","empty":"No annotations.","author":"Author","modifier":"Modifier","resolver":"Resolver","recorder":"Recorder","assignee":"Assignee","categoryLabels":{"NoteAnnotation":"Note","IssueAnnotation":"Issue","ClassificationAnnotation":"Classification","LocationAnnotation":"Location","RecordAnnotation":"Record"},"toolLabels":{"select":"Select","point":"Point","multiple-points":"Multiple points","bounding-box":"Bounding box","clear":"Clear geometry"}},"pt-BR":{"annotation":"Anotação","emptyAnnotation":"Anotação sem texto.","showAnnotation":"Mostrar anotação: ","closeAnnotation":"Fechar anotação","previewUnavailable":"A área de pré-visualização não está disponível.","openCancelled":"A abertura da anotação foi cancelada.","application":"Anotação OntoBDC","resource":"Recurso","dialog":"Anotar representação","close":"Fechar","category":"Categoria","newAnnotation":"Nova anotação","delete":"Excluir","save":"Salvar","saved":"Salvo","invalidGeometry":"A geometria selecionada não é válida para esta categoria de anotação.","saveError":"Não foi possível salvar a anotação.","field":"Campo","legend":"Legenda","total":"Total","openIssues":"Problemas abertos","inProgressIssues":"Em andamento","resolvedIssues":"Resolvidos","withoutGeometry":"Sem geometria","withoutThread":"Sem tópico","open":"Abrir","unassigned":"Tópicos não atribuídos","unlabeled":"Tópico sem rótulo","subjects":"Tópicos","subject":"Tópico","threads":"Tópicos","thread":"Tópico","newThread":"Novo tópico","threadName":"Nome","threadDescription":"Descrição","createThread":"Criar","annotationsStat":"Anotações","categoriesStat":"Categorias","peopleStat":"Pessoas","resourcesStat":"Recursos","rangeStat":"Período","views":"Visões do tópico","space":"Espaço","timeline":"Linha do tempo","people":"Pessoas","withoutPosition":"Sem posição espacial","spatialGroup":"Grupo espacial","empty":"Nenhuma anotação.","author":"Autor","modifier":"Modificador","resolver":"Resolvedor","recorder":"Registrador","assignee":"Responsável","categoryLabels":{"NoteAnnotation":"Nota","IssueAnnotation":"Problema","ClassificationAnnotation":"Classificação","LocationAnnotation":"Localização","RecordAnnotation":"Registro"},"toolLabels":{"select":"Selecionar","point":"Ponto","multiple-points":"Múltiplos pontos","bounding-box":"Caixa delimitadora","clear":"Limpar geometria"}},"pt-PT":{"annotation":"Anotação","emptyAnnotation":"Anotação sem texto.","showAnnotation":"Mostrar anotação: ","closeAnnotation":"Fechar anotação","previewUnavailable":"A área de pré-visualização não está disponível.","openCancelled":"A abertura da anotação foi cancelada.","application":"Anotação OntoBDC","resource":"Recurso","dialog":"Anotar representação","close":"Fechar","category":"Categoria","newAnnotation":"Nova anotação","delete":"Eliminar","save":"Guardar","saved":"Guardado","invalidGeometry":"A geometria selecionada não é válida para esta categoria de anotação.","saveError":"Não foi possível guardar a anotação.","field":"Campo","legend":"Legenda","total":"Total","openIssues":"Problemas em aberto","inProgressIssues":"Em curso","resolvedIssues":"Resolvidos","withoutGeometry":"Sem geometria","withoutThread":"Sem tópico","open":"Abrir","unassigned":"Tópicos não atribuídos","unlabeled":"Tópico sem etiqueta","subjects":"Tópicos","subject":"Tópico","threads":"Tópicos","thread":"Tópico","newThread":"Novo tópico","threadName":"Nome","threadDescription":"Descrição","createThread":"Criar","annotationsStat":"Anotações","categoriesStat":"Categorias","peopleStat":"Pessoas","resourcesStat":"Recursos","rangeStat":"Período","views":"Vistas do tópico","space":"Espaço","timeline":"Linha temporal","people":"Pessoas","withoutPosition":"Sem posição espacial","spatialGroup":"Grupo espacial","empty":"Sem anotações.","author":"Autor","modifier":"Modificador","resolver":"Resolvedor","recorder":"Registador","assignee":"Responsável","categoryLabels":{"NoteAnnotation":"Nota","IssueAnnotation":"Problema","ClassificationAnnotation":"Classificação","LocationAnnotation":"Localização","RecordAnnotation":"Registo"},"toolLabels":{"select":"Selecionar","point":"Ponto","multiple-points":"Múltiplos pontos","bounding-box":"Caixa delimitadora","clear":"Limpar geometria"}},"es":{"annotation":"Anotación","emptyAnnotation":"Anotación sin texto.","showAnnotation":"Mostrar anotación: ","closeAnnotation":"Cerrar anotación","previewUnavailable":"El área de vista previa no está disponible.","openCancelled":"Se canceló la apertura de la anotación.","application":"Anotación OntoBDC","resource":"Recurso","dialog":"Anotar representación","close":"Cerrar","category":"Categoría","newAnnotation":"Nueva anotación","delete":"Eliminar","save":"Guardar","saved":"Guardado","invalidGeometry":"La geometría seleccionada no es válida para esta categoría de anotación.","saveError":"No se pudo guardar la anotación.","field":"Campo","legend":"Leyenda","total":"Total","openIssues":"Problemas abiertos","inProgressIssues":"En progreso","resolvedIssues":"Resueltos","withoutGeometry":"Sin geometría","withoutThread":"Sin hilo","open":"Abrir","unassigned":"Hilos no asignados","unlabeled":"Hilo sin etiqueta","subjects":"Hilos","subject":"Hilo","threads":"Hilos","thread":"Hilo","newThread":"Nuevo hilo","threadName":"Nombre","threadDescription":"Descripción","createThread":"Crear","annotationsStat":"Anotaciones","categoriesStat":"Categorías","peopleStat":"Personas","resourcesStat":"Recursos","rangeStat":"Rango","views":"Vistas del hilo","space":"Espacio","timeline":"Línea de tiempo","people":"Personas","withoutPosition":"Sin posición espacial","spatialGroup":"Grupo espacial","empty":"Sin anotaciones.","author":"Autor","modifier":"Modificador","resolver":"Resolutor","recorder":"Registrador","assignee":"Responsable","categoryLabels":{"NoteAnnotation":"Nota","IssueAnnotation":"Problema","ClassificationAnnotation":"Clasificación","LocationAnnotation":"Ubicación","RecordAnnotation":"Registro"},"toolLabels":{"select":"Seleccionar","point":"Punto","multiple-points":"Múltiples puntos","bounding-box":"Cuadro delimitador","clear":"Limpiar geometría"}}};
 
   function localeLabels() {
     const lang = document.documentElement.lang || document.documentElement.dataset.language || "en";
@@ -93,10 +93,31 @@
       return true;
     }
 
+    function threadId(label) {
+      const slug = String(label || "thread").toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48) || "thread";
+      return "urn:ontobdc:thread:" + slug + "-"
+        + Math.random().toString(36).slice(2, 8);
+    }
+    async function createThread(containerHandle, label, description) {
+      await store.load(containerHandle);
+      const thread = store.upsertThread({
+        id: threadId(label),
+        label: label,
+        description: description || "",
+        created: new Date().toISOString(),
+      });
+      await store.persist(containerHandle);
+      return thread;
+    }
+    function listThreads() {
+      return store.listThreads();
+    }
+
     async function open(raw) {
       const context = normalizeContext(raw); const generation = ++openGeneration;
       await store.load(context.containerHandle); ensureOpenIsActive(generation);
-      const surface = await surfaces.createSurface(context, Object.assign({ surfaceClass: options.prefix + "-annotation-image" }, options.surface));
+      const surface = await surfaces.createSurface(context, Object.assign({ surfaceClass: options.prefix + "-annotation-image", pdfAllPages: true }, options.surface));
       ensureOpenIsActive(generation, surface);
       const representationHash = await model.digest(context.file); ensureOpenIsActive(generation, surface); close();
       const editor = editorFactory.createEditor(context, surface, {
@@ -105,10 +126,20 @@
         newLabel: options.labels.newAnnotation, deleteLabel: options.labels.delete, saveLabel: options.labels.save,
         categoryLabels: options.labels.categoryLabels, toolLabels: options.labels.toolLabels,
         fieldLabels: options.labels.fieldLabels, valueLabels: options.labels.valueLabels,
+        threads: store.listThreads(),
+        onCreateThread: function (label, description) {
+          return createThread(context.containerHandle, label, description);
+        },
+        threadLabels: {
+          newThread: options.labels.newThread,
+          threadName: options.labels.threadName,
+          threadDescription: options.labels.threadDescription,
+          createThread: options.labels.createThread,
+        },
       });
       document.body.appendChild(editor.root); document.body.classList.add(options.bodyOpenClass);
       dialog = editor.root; dialogRelease = surface.release; dialogOnClose = typeof context.onClose === "function" ? context.onClose : null;
-      const session = { context: context, width: surface.width, height: surface.height, overlay: editor.annotationOverlay, selectedId: null, points: [], color: { value: options.store.defaultColor || "#67e8f9" } };
+      const session = { context: context, width: surface.width, height: surface.height, pageWidth: surface.pageWidth || surface.width, pageHeight: surface.pageHeight || surface.height, overlay: editor.annotationOverlay, selectedId: null, points: [], color: { value: options.store.defaultColor || "#67e8f9" } };
       const geometry = geometryFactory.createController(editor.stage, editor.geometryOverlay, { sourceWidth: surface.width, sourceHeight: surface.height });
 
       function renderAnnotations() {
@@ -149,17 +180,35 @@
         if (saveToastTimer) clearTimeout(saveToastTimer);
         saveToastTimer = setTimeout(function () { toast.classList.remove("is-visible"); }, 2200);
       }
+      // The point being placed is drawn (annotation_editor.css) with
+      // stroke: var(--ontobdc-annotation-marker-color). Keep that custom
+      // property on the geometry overlay in sync with the "Marker colour"
+      // field so the ring is always the currently selected colour.
+      function syncMarkerColor() {
+        const control = editor.getForm() && editor.getForm().controls
+          ? editor.getForm().controls.markerColor
+          : null;
+        const value = (control && control.getValue && control.getValue())
+          || session.color.value
+          || "#67e8f9";
+        session.color.value = value;
+        editor.geometryOverlay.style.setProperty("--ontobdc-annotation-marker-color", value);
+      }
+      editor.root.addEventListener("input", function (event) {
+        if (event.target && event.target.name === "markerColor") syncMarkerColor();
+      });
+
       function reset() {
         session.selectedId = null; editor.lockCategory(false); editor.setCategory("NoteAnnotation"); editor.deleteButton.disabled = true; editor.showError(""); geometry.clear(); renderAnnotations();
-        syncToolbarMode("point");
+        syncToolbarMode("point"); syncMarkerColor();
       }
       function selectAnnotation(annotation) {
         session.selectedId = annotation.id; const category = model.localName(annotation.type);
         const form = editor.setCategory(category); form.load(annotation); editor.lockCategory(true); editor.deleteButton.disabled = false;
         geometry.setSelector(annotation.selector); renderAnnotations();
-        syncToolbarMode("select");
+        syncToolbarMode("select"); syncMarkerColor();
       }
-      editor.root.addEventListener("ontobdc:categorychange", function () { geometry.clear(); editor.showError(""); });
+      editor.root.addEventListener("ontobdc:categorychange", function () { geometry.clear(); editor.showError(""); syncMarkerColor(); });
       editor.toolbar.addEventListener("click", function (event) {
         const button = event.target.closest("[data-geometry-tool]"); if (!button) return;
         const tool = button.dataset.geometryTool;
@@ -179,6 +228,7 @@
             representationHash: context.representationSource ? representationHash : null,
             relatedDimension: context.dimension || null, selector: selector, properties: values.properties,
             subjects: values.subjects || (existing && existing.subjects) || [],
+            threads: values.threads || (existing && existing.threads) || [],
             assignedTo: values.assignedTo || (existing && existing.assignedTo) || [],
             resolvedBy: values.resolvedBy || (existing && existing.resolvedBy) || null,
             annotatedBy: existing && existing.annotatedBy,
@@ -187,7 +237,11 @@
             modifiedBy: existing && existing.modifiedBy,
           });
           annotation = model.normalizeAnnotation(lifecycle.apply(annotation, context, existing));
-          store.upsert(annotation); await store.persist(context.containerHandle); selectAnnotation(annotation);
+          store.upsert(annotation); await store.persist(context.containerHandle);
+          // Full clean slate after a save — the just-saved marker stays on the
+          // stage (renderAnnotations, via reset), the form/geometry/selection
+          // do not.
+          reset();
           showSavedToast();
         } catch (error) { editor.showError((error && error.message) || options.labels.saveError); }
       });
@@ -219,15 +273,19 @@
       element.replaceChildren(workspace.root);
       return workspace;
     }
-    async function openSubjectPage(element, raw, subjectUri, configuration) {
+    async function openThreadPage(element, raw, threadId, configuration) {
       const context = normalizeContext(raw);
       await store.load(context.containerHandle);
       const page = subjectPageFactory.create(Object.assign({
         annotations: store.list(),
-        subjectUri: subjectUri || null,
+        threads: store.listThreads(),
+        threadId: threadId || null,
         labels: options.labels,
         onOpen: function (annotation) {
           if (context.openAnnotation) context.openAnnotation(annotation);
+        },
+        onCreateThread: function (label, description) {
+          return createThread(context.containerHandle, label, description);
         },
       }, configuration || {}));
       element.replaceChildren(page.root);
@@ -236,7 +294,8 @@
     document.addEventListener("keydown", function (event) { if (event.key === "Escape" && dialog) close(); });
     return Object.freeze({
       cancelOpen, clearPreview, close, decoratePreview: showPreview, open, showPreview,
-      openWorkspace, openSubjectPage, listAnnotations: store.list,
+      openWorkspace, openThreadPage, openSubjectPage: openThreadPage,
+      listAnnotations: store.list, listThreads, createThread,
     });
   }
 

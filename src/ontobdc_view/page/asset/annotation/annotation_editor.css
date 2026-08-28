@@ -30,7 +30,78 @@
   background: var(--ontobdc-annotation-input, rgba(15, 23, 42, .78));
 }
 
+/* A real, readable colour bar instead of the browser's default thin swatch. */
+.ontobdc-annotation-field input[type="color"] {
+  block-size: 44px;
+  padding: 4px;
+  cursor: pointer;
+}
+.ontobdc-annotation-field input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+.ontobdc-annotation-field input[type="color"]::-webkit-color-swatch {
+  border: 1px solid var(--ontobdc-annotation-line, rgba(148, 163, 184, .28));
+  border-radius: 8px;
+}
+.ontobdc-annotation-field input[type="color"]::-moz-color-swatch {
+  border: 1px solid var(--ontobdc-annotation-line, rgba(148, 163, 184, .28));
+  border-radius: 8px;
+}
+
 .ontobdc-annotation-field textarea { min-height: 112px; resize: vertical; }
+
+/* Threads combobox: a multi-select over the known thread catalogue plus
+   an inline "new thread" panel (name + description). */
+.ontobdc-annotation-thread-field { gap: 7px; }
+.ontobdc-annotation-thread-select {
+  min-height: 92px;
+  padding: 4px;
+}
+.ontobdc-annotation-thread-select option {
+  padding: 4px 6px;
+  border-radius: 6px;
+}
+.ontobdc-annotation-thread-new {
+  justify-self: start;
+  padding: 6px 12px;
+  border: 1px dashed var(--ontobdc-annotation-accent, #67e8f9);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--ontobdc-annotation-accent, #67e8f9);
+  font: inherit;
+  font-size: .8rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.ontobdc-annotation-thread-new:hover {
+  background: color-mix(in srgb, var(--ontobdc-annotation-accent, #67e8f9) 12%, transparent);
+}
+.ontobdc-annotation-thread-create {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid var(--ontobdc-annotation-line, rgba(148, 163, 184, .28));
+  border-radius: 10px;
+}
+.ontobdc-annotation-thread-create input {
+  width: 100%;
+  padding: 8px 10px;
+  color: inherit;
+  border: 1px solid var(--ontobdc-annotation-line, rgba(148, 163, 184, .28));
+  border-radius: 8px;
+  background: var(--ontobdc-annotation-input, rgba(15, 23, 42, .78));
+  font: inherit;
+}
+.ontobdc-annotation-thread-create-confirm {
+  justify-self: start;
+  padding: 6px 14px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--ontobdc-annotation-accent, #67e8f9);
+  color: #04263b;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+.ontobdc-annotation-thread-create-confirm:disabled { opacity: .55; cursor: progress; }
 .ontobdc-annotation-field [aria-invalid="true"] { border-color: #fb7185; }
 .ontobdc-annotation-field-error,
 .ontobdc-annotation-form-error { color: #fda4af; font-size: .78rem; }
@@ -60,14 +131,15 @@
 .ontobdc-annotation-geometry-point,.ontobdc-annotation-geometry-box,.ontobdc-annotation-geometry-handle { pointer-events: auto; }
 .ontobdc-annotation-geometry-point,.ontobdc-annotation-geometry-box { cursor: move; }
 .ontobdc-annotation-geometry-handle { fill: #fff; stroke: var(--ontobdc-annotation-accent,#67e8f9); stroke-width: 3px; cursor: nwse-resize; }
-/* A neutral, translucent handle overlaid on the annotation's own
-   marker — not a second, competing colored shape (which is what a
-   solid accent-colored fill here looked like: a distinct disc rather
-   than "this marker is the one you're editing"). */
+/* The point being placed: a hollow ring in the selected marker colour with a
+   deliberately thick, size-independent stroke. --ontobdc-annotation-marker-color
+   is set on the geometry overlay by annotation_runtime.js from the "Marker
+   colour" field. */
 .ontobdc-annotation-geometry-point {
-  fill: rgba(226, 232, 240, .28);
-  stroke: rgba(226, 232, 240, .92);
-  stroke-width: 2px;
+  fill: none;
+  stroke: var(--ontobdc-annotation-marker-color, var(--ontobdc-annotation-accent, #67e8f9));
+  stroke-width: 3.5px;
+  vector-effect: non-scaling-stroke;
 }
 .ontobdc-annotation-geometry-box {
   fill: rgba(103, 232, 249, .08);
