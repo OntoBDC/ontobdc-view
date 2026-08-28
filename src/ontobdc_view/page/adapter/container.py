@@ -174,6 +174,19 @@ _CONTAINER_CONNECTION_TEMPLATE = r"""(function (window) {
     return hasExactNamedResource;
   }
 
+  // The Page is generated for one dataset and carries that dataset's folder
+  // name in its payload, so a container holding several datasets is not
+  // actually ambiguous — the name settles it. Read it lazily for the same
+  // reason `t` is: the payload global may not be attached yet when this IIFE
+  // runs, and a value captured then would freeze to "".
+  function pageDatasetFolderName() {
+    const payload = runtime.WORKSTREAM_PAYLOAD
+      || WORKSTREAM_PAYLOAD
+      || window.__PAYLOAD_GLOBAL_NAME__
+      || null;
+    return payload ? String(payload.datasetFolder || "") : "";
+  }
+
   async function resolveContainerHandle(selectedHandle) {
     if (await isContainerHandle(selectedHandle)) {
       if (runtime.state.datasetHandle !== selectedHandle) {
@@ -182,12 +195,17 @@ _CONTAINER_CONNECTION_TEMPLATE = r"""(function (window) {
       return selectedHandle;
     }
 
+    const wantedName = pageDatasetFolderName();
     const queue = [{ handle: selectedHandle, relPath: "" }];
     const visited = new Set();
     const matches = [];
     const maxVisits = 2000;
 
-    while (queue.length > 0 && visited.size < maxVisits && matches.length <= 2) {
+    // Every dataset under the selection is collected, not just the first
+    // three: the Page's own folder may be the tenth one walked, and the
+    // message raised when it is genuinely absent names what was found
+    // instead — neither is possible from a truncated list.
+    while (queue.length > 0 && visited.size < maxVisits) {
       const currentItem = queue.shift();
       const current = currentItem && currentItem.handle;
       const currentRelPath = currentItem ? currentItem.relPath : "";
@@ -197,7 +215,7 @@ _CONTAINER_CONNECTION_TEMPLATE = r"""(function (window) {
       visited.add(current);
       try {
         for await (const entry of current.values()) {
-          if (visited.size >= maxVisits || matches.length > 2) {
+          if (visited.size >= maxVisits) {
             break;
           }
           if (!entry || entry.kind !== "directory") {
@@ -208,10 +226,14 @@ _CONTAINER_CONNECTION_TEMPLATE = r"""(function (window) {
             continue;
           }
           if (await isContainerHandle(entry)) {
-            matches.push({
-              handle: entry,
-              relPath: [currentRelPath, name].filter(Boolean).join("/"),
-            });
+            const relPath = [currentRelPath, name].filter(Boolean).join("/");
+            // The Page's own dataset ends the walk: nothing found later can
+            // be a better answer than the folder the Page was generated for.
+            if (wantedName && name === wantedName) {
+              runtime.state.datasetRelPath = relPath;
+              return entry;
+            }
+            matches.push({ handle: entry, relPath: relPath });
           } else {
             queue.push({
               handle: entry,
@@ -232,8 +254,14 @@ _CONTAINER_CONNECTION_TEMPLATE = r"""(function (window) {
       return matches[0].handle;
     }
     if (matches.length > 1) {
+      // Naming the datasets that were found turns "pick the right folder"
+      // into an instruction the reader can act on without opening the tree.
       throw new Error(
-        t("multipleDatasetsSelectedFolder"),
+        t("multipleDatasetsSelectedFolderCandidates", {
+          folders: matches.slice(0, 8).map(function (match) {
+            return match.relPath;
+          }).join(", "),
+        }),
       );
     }
 
